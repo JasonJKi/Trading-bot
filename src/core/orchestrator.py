@@ -26,6 +26,7 @@ from src.config import Settings, get_settings
 from src.core.alerter import alert
 from src.core.broker import BrokerAdapter
 from src.core.reconciler import open_orders_for, reconcile_open_orders
+from src.core.risk import assert_all_paper_validated, trip_circuit_breaker_if_needed
 from src.core.store import (
     BotPosition,
     EquitySnapshot,
@@ -80,6 +81,9 @@ class Orchestrator:
     def setup(self) -> None:
         init_db()
         self.bots = load_enabled_bots(self.settings)
+        # In live mode, refuse to start unless every bot has been paper-validated.
+        if self.settings.is_live:
+            assert_all_paper_validated([b.id for b in self.bots])
         for bot in self.bots:
             bot.on_start()
         self._log_startup_banner()
@@ -127,6 +131,9 @@ class Orchestrator:
         for bot in self.bots:
             if not self._bot_is_enabled(bot.id):
                 log.info("bot %s is paused — skipping", bot.id)
+                continue
+            # Trip circuit breaker before running, in case a recent cycle pushed DD over cap.
+            if trip_circuit_breaker_if_needed(bot.id):
                 continue
             results.append(self._run_bot(bot))
         return results
