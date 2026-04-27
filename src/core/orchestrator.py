@@ -24,6 +24,7 @@ from sqlalchemy import select
 
 from src.config import Settings, get_settings
 from src.core.alerter import alert
+from src.core.allocator import allocate as compute_allocations
 from src.core.broker import BrokerAdapter
 from src.core.reconciler import open_orders_for, reconcile_open_orders
 from src.core.risk import assert_all_paper_validated, trip_circuit_breaker_if_needed
@@ -127,19 +128,35 @@ class Orchestrator:
             )
             log.error("global drawdown breached — halting all bots")
             return []
+        # Dynamic per-bot allocation: softmax over rolling Sharpe.
+        active = [b for b in self.bots if self._bot_is_enabled(b.id)]
+        allocations = {
+            a.strategy_id: a
+            for a in compute_allocations(
+                [b.id for b in active],
+                total_capital=self.settings.per_bot_cap * len(active),
+            )
+        }
+        for sid, alloc in allocations.items():
+            log.info(
+                "alloc %s = $%.0f (w=%.2f, sharpe30d=%.2f, %s)",
+                sid, alloc.capital, alloc.weight, alloc.sharpe_30d, alloc.rationale,
+            )
+
         results = []
         for bot in self.bots:
             if not self._bot_is_enabled(bot.id):
                 log.info("bot %s is paused — skipping", bot.id)
                 continue
-            # Trip circuit breaker before running, in case a recent cycle pushed DD over cap.
             if trip_circuit_breaker_if_needed(bot.id):
                 continue
-            results.append(self._run_bot(bot))
+            cap = allocations[bot.id].capital if bot.id in allocations else self.settings.per_bot_cap
+            results.append(self._run_bot(bot, cap))
         return results
 
-    def _run_bot(self, bot: Strategy) -> BotRunResult:
-        bot_alloc = self.settings.per_bot_cap
+    def _run_bot(self, bot: Strategy, bot_alloc: float | None = None) -> BotRunResult:
+        if bot_alloc is None:
+            bot_alloc = self.settings.per_bot_cap
         try:
             self.broker.equity()  # connectivity probe
         except Exception as exc:  # pragma: no cover - network-dependent
