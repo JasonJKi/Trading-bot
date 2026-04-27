@@ -407,6 +407,18 @@ def main() -> None:  # pragma: no cover - CLI entrypoint
         replace_existing=True,
     )
     log.info("scheduled db_backup: 04:00 UTC daily")
+
+    # Refresh data-source caches independently of the bots that consume them.
+    if "congress" in [b.id for b in orch.bots]:
+        from src.data.congress import refresh_cache as refresh_congress
+
+        sched.add_job(
+            refresh_congress,
+            IntervalTrigger(hours=1),
+            id="refresh_congress",
+            replace_existing=True,
+        )
+        log.info("scheduled refresh_congress: every 1h")
     sched.start()
 
 

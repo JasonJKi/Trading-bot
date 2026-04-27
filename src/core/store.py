@@ -173,6 +173,51 @@ class AuditEvent(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class CongressDisclosure(Base):
+    """Cache of congressional trade disclosures pulled from external APIs.
+
+    `external_id` is a stable id the upstream provider gives us — we treat
+    inserts as upsert-by-external-id so re-fetches are idempotent.
+    """
+
+    __tablename__ = "congress_disclosures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    external_id: Mapped[str] = mapped_column(String(96), unique=True, index=True)
+    politician: Mapped[str] = mapped_column(String(96), index=True)
+    chamber: Mapped[str] = mapped_column(String(16), default="")  # House / Senate
+    party: Mapped[str] = mapped_column(String(16), default="")
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    side: Mapped[str] = mapped_column(String(16))  # buy / sell / exchange
+    amount_low: Mapped[float] = mapped_column(Float, default=0.0)
+    amount_high: Mapped[float] = mapped_column(Float, default=0.0)
+    transaction_date: Mapped[datetime] = mapped_column(DateTime, index=True)
+    disclosure_date: Mapped[datetime] = mapped_column(DateTime, index=True)
+    source: Mapped[str] = mapped_column(String(24), default="quiver")
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class NewsItem(Base):
+    """Cache of news headlines from a broker / vendor news feed."""
+
+    __tablename__ = "news_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    external_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    headline: Mapped[str] = mapped_column(String(512))
+    summary: Mapped[str] = mapped_column(String(2048), default="")
+    source: Mapped[str] = mapped_column(String(64), default="")
+    url: Mapped[str] = mapped_column(String(512), default="")
+    sentiment_score: Mapped[float] = mapped_column(Float, default=0.0)  # -1..+1
+    sentiment_label: Mapped[str] = mapped_column(String(16), default="")  # neutral/positive/negative
+    sentiment_model: Mapped[str] = mapped_column(String(48), default="")  # e.g. ProsusAI/finbert
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 Index("ix_trades_strategy_ts", Trade.strategy_id, Trade.ts)
 Index("ix_equity_strategy_ts", EquitySnapshot.strategy_id, EquitySnapshot.ts)
 Index("ix_orders_strategy_ts", Order.strategy_id, Order.ts)
