@@ -1,20 +1,21 @@
-# Fly.io config. The `app` line is omitted intentionally — `fly deploy`
-# (or the GitHub auto-deploy) will use whichever app the repo is connected to.
+# Fly.io config for the trading-bot worker.
+# Deliberately omits [app] so it works with any app name created via `fly launch`
+# or the Fly dashboard.
+#
+# This is a worker (background process) — there is no [http_service] / [[services]] block.
+# That is intentional: the bot doesn't listen on any port. Launch the dashboard
+# separately if you want it (different app or `fly machines run`).
 primary_region = "iad"
 
 [build]
-
-[deploy]
-  # Initialize SQLite schema before the new release goes live.
-  release_command = "python -m src.core.init_db"
 
 [env]
   ALPACA_PAPER = "true"
   DATABASE_URL = "sqlite:////app/data/trading.db"
   LOG_LEVEL = "INFO"
 
-# Persistent volume for SQLite. The volume name must match an existing volume
-# in the same region as the app (see Volumes tab in the Fly dashboard).
+# Persistent volume for SQLite. Create the volume in the same region as the app
+# *before* deploying:  fly volumes create data --size 1 --region iad
 [mounts]
   source = "data"
   destination = "/app/data"
@@ -23,6 +24,3 @@ primary_region = "iad"
   cpu_kind = "shared"
   cpus = 1
   memory_mb = 256
-
-# This is a worker, not a webserver — no [[services]] block.
-# Launch the dashboard separately (e.g. `fly machines run` with a different cmd).
