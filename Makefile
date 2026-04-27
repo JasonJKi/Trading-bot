@@ -57,10 +57,12 @@ db-init:  ## Initialize the SQLite schema.
 	$(PY) -m src.core.init_db
 
 .PHONY: db-backup
-db-backup:  ## Snapshot the SQLite DB to data/backup/.
-	mkdir -p data/backup
-	cp data/trading.db data/backup/trading-$$(date +%Y%m%d-%H%M%S).db
-	@echo "Backed up data/trading.db -> data/backup/"
+db-backup:  ## Snapshot the SQLite DB (online, gzipped) to data/backup/.
+	$(PY) -m src.core.backup
+
+.PHONY: healthz
+healthz:  ## Probe the local /healthz endpoint.
+	curl -sf http://localhost:8081/healthz && echo
 
 # ---------- docker-compose ----------
 .PHONY: up

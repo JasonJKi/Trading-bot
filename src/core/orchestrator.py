@@ -344,6 +344,10 @@ def main() -> None:  # pragma: no cover - CLI entrypoint
 
     orch = Orchestrator()
     orch.setup()
+
+    from src.core.healthz import start_in_background as start_healthz
+    start_healthz()
+
     if args.once:
         reconcile_open_orders(orch.broker)
         for r in orch.run_once():
@@ -367,6 +371,17 @@ def main() -> None:  # pragma: no cover - CLI entrypoint
         replace_existing=True,
     )
     log.info("scheduled reconciler: every %ss", RECONCILE_INTERVAL_SEC)
+
+    # Nightly DB backup at 04:00 UTC (after US close, before Asia open).
+    from src.core.backup import backup_database
+
+    sched.add_job(
+        backup_database,
+        CronTrigger(hour=4, minute=0),
+        id="db_backup",
+        replace_existing=True,
+    )
+    log.info("scheduled db_backup: 04:00 UTC daily")
     sched.start()
 
 
