@@ -6,49 +6,57 @@ Runs several strategies side by side (Momentum, Mean Reversion, Congress
 Copycat, News/Sentiment) on a single Alpaca paper account so you can see
 which ones survive periods of high volatility before risking real money.
 
+For the full operating manual see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
 ## What's in here
 
 ```
 src/
   config.py                 # env-driven settings + live-trading guard
   core/
-    strategy.py             # Strategy ABC + dataclasses
-    broker.py               # Alpaca adapter, enforces per-position cap
-    orchestrator.py         # runs all enabled bots, persists trades + equity
-    store.py                # SQLAlchemy models (Trade, EquitySnapshot, Signal)
-    metrics.py              # Sharpe, Sortino, drawdown, expectancy, etc.
+    strategy.py             # Strategy ABC (id, version, schedule, target_positions)
+    broker.py               # Alpaca adapter; idempotent client_order_id; risk caps
+    orchestrator.py         # runs all enabled bots, persists Orders, schedules reconciler
+    reconciler.py           # polls non-terminal Orders, applies fills to BotPosition ledger
+    store.py                # Trade / Order / Signal / BotPosition / BotStatus / AuditEvent
+    metrics.py              # Sharpe, Sortino, drawdown, expectancy, correlation
+    risk.py                 # per-bot circuit breaker + graduation gate
+    alerter.py              # Slack / Discord / email / console alerting
+    logging_setup.py        # rich (TTY) or JSON (prod) structured logs
   bots/
     momentum.py             # EMA cross + MACD + ADX
     mean_reversion.py       # RSI(2) + Bollinger Band
     congress.py             # placeholder (needs Quiver API key)
     sentiment.py            # placeholder (needs FinBERT install)
   data/bars.py              # yfinance OHLCV fetcher
-  backtest/runner.py        # walk-forward backtest using the same strategies
-  cli.py                    # `trading-bot run|backtest|dashboard`
+  backtest/runner.py        # walk-forward backtest using the same Strategy classes
+  cli.py                    # run | backtest | dashboard | graduate | pause | enable | status
 dashboard/
-  app.py                    # Streamlit UI (read-only)
+  app.py                    # Streamlit UI (read-only): live equity, positions, bot cards
+scripts/run.sh              # local + container entrypoint (worker + dashboard)
 tests/                      # pytest suite (no network required)
+Dockerfile                  # multi-stage build, non-root user
+docker-compose.yml          # local stack (sqlite default, --profile postgres for pg)
+Makefile                    # `make help` for everything
+fly.toml                    # production deploy config
 ```
 
-## Quickstart
+## Quickstart (local — recommended for first run)
 
 ```bash
-# 1. Install (Python 3.11+)
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+make install      # editable install with all extras
+cp .env.example .env  # fill ALPACA_API_KEY / ALPACA_API_SECRET
+make test         # 34 tests, no network
+make run-once     # one cycle of every enabled bot
+make dashboard    # http://localhost:8501
+make run          # long-running scheduler
+```
 
-# 2. Configure
-cp .env.example .env
-# Fill ALPACA_API_KEY / ALPACA_API_SECRET from https://app.alpaca.markets/paper/dashboard/overview
+Or via docker-compose (one command):
 
-# 3. Run all enabled bots once (paper)
-python -m src.core.orchestrator --once
-
-# 4. Open the dashboard
-streamlit run dashboard/app.py
-
-# 5. Run as a daemon (APScheduler with each bot's cron)
-python -m src.core.orchestrator
+```bash
+make up           # SQLite, single container, dashboard on :8080
+make up-pg        # adds Postgres profile for a real DB
 ```
 
 ## Tests
@@ -57,25 +65,28 @@ python -m src.core.orchestrator
 pytest -q
 ```
 
-20 tests cover metrics, indicator math, the live-mode guard, and an
-end-to-end orchestrator run with a fake broker. None touch the network.
+34 tests cover metrics, indicator math, the live-mode guard, the
+order pipeline (idempotency, in-flight guard, reconciliation), the
+alerter (fan-out, fault-tolerance), and the risk module (circuit
+breaker, graduation gate). No network required.
 
 ## Going live (don't, until you've earned it)
 
-Live trading is gated by **two** environment variables:
+Live trading is gated by **three** layers:
 
-```bash
-ALPACA_PAPER=false
-ALPACA_LIVE_CONFIRM=YES_I_MEAN_IT
-```
-
-Setting only the first one will refuse to start. A strategy is ready for
-real money when:
-
-- ≥ 30 calendar days of paper trading,
-- live Sharpe > 1.0 and within ±20% of backtested Sharpe,
-- max drawdown ≤ backtested max DD × 1.25,
-- no code changes in the last 7 days.
+1. **Two env vars** must both be set:
+   ```
+   ALPACA_PAPER=false
+   ALPACA_LIVE_CONFIRM=YES_I_MEAN_IT
+   ```
+2. **Every enabled bot must be paper-validated.** Run:
+   ```
+   python -m src.cli graduate --strategy momentum
+   ```
+   The gate refuses to flip `paper_validated_at` unless the bot has ≥ 30
+   days of equity snapshots and a Sharpe ≥ 1.0.
+3. **At startup**, the orchestrator double-checks every enabled bot has
+   been graduated. If any haven't, it refuses to run.
 
 ## Risk controls (always on)
 
@@ -83,8 +94,12 @@ real money when:
 | --- | --- | --- |
 | Per-position notional | 5% of bot allocation | `BrokerAdapter.submit` |
 | Per-bot capital cap | $25,000 | orchestrator |
+| Per-bot 30-day DD halt | 15% (auto-pauses bot) | `risk.evaluate_circuit_breaker` |
 | Global drawdown halt | 10% from starting equity | orchestrator |
 | Live-mode confirm token | required | `Settings.assert_safe_to_trade` |
+| Paper-validated graduation | required for live | `risk.assert_all_paper_validated` |
+| Idempotent order submission | client_order_id | `BrokerAdapter.make_client_order_id` |
+| In-flight order guard | open `Order` row blocks resubmit | `Orchestrator._submit_intent` |
 
 ## Deploying to Fly.io
 
