@@ -13,10 +13,10 @@ primary_region = "iad"
   DATABASE_URL = "sqlite:////app/data/trading.db"
   LOG_LEVEL = "INFO"
 
-# Persistent volume for SQLite. Create with:
-#   fly volumes create trading_data --size 1 --region iad
+# Persistent volume for SQLite. The volume name must match an existing volume
+# in the same region as the app (see Volumes tab in the Fly dashboard).
 [mounts]
-  source = "trading_data"
+  source = "data"
   destination = "/app/data"
 
 [[vm]]
