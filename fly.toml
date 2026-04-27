@@ -1,0 +1,24 @@
+# Fly.io config — `fly launch --no-deploy` will rewrite app/region but keep this shape.
+app = "trading-bot"
+primary_region = "iad"
+
+[build]
+
+[env]
+  ALPACA_PAPER = "true"
+  DATABASE_URL = "sqlite:////app/data/trading.db"
+  LOG_LEVEL = "INFO"
+
+# Persistent volume for SQLite. Create with:
+#   fly volumes create trading_data --size 1 --region iad
+[mounts]
+  source = "trading_data"
+  destination = "/app/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
+# This is a worker, not a webserver — no [[services]] block.
+# Launch the dashboard separately (e.g. `fly machines run` with a different cmd).
