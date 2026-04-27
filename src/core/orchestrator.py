@@ -54,7 +54,26 @@ class Orchestrator:
         self.bots = load_enabled_bots(self.settings)
         for bot in self.bots:
             bot.on_start()
-        log.info("orchestrator ready: %s", [b.id for b in self.bots])
+        self._log_startup_banner()
+
+    def _log_startup_banner(self) -> None:
+        mode = "PAPER" if self.settings.alpaca_paper else "LIVE"
+        log.info("=" * 60)
+        log.info("trading-bot starting — mode=%s", mode)
+        log.info("db=%s", self.settings.database_url)
+        log.info(
+            "caps: per_bot=$%s per_position=%.1f%% global_dd=%.1f%%",
+            f"{self.settings.per_bot_cap:,.0f}",
+            self.settings.per_position_pct * 100,
+            self.settings.global_max_drawdown * 100,
+        )
+        if not self.bots:
+            log.warning("no bots enabled — set ENABLED_BOTS in env")
+        for bot in self.bots:
+            log.info("  bot=%-16s schedule=%s", bot.id, bot.schedule)
+        if not (self.settings.alpaca_api_key and self.settings.alpaca_api_secret):
+            log.warning("ALPACA_API_KEY / ALPACA_API_SECRET not set — bot will fail on first tick")
+        log.info("=" * 60)
 
     # --- core cycle -----------------------------------------------------
     def run_once(self) -> list[BotRunResult]:

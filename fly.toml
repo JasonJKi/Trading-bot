@@ -1,12 +1,12 @@
-# fly.toml app configuration file generated for trading-bot-uyye0w on 2026-04-27T11:45:55Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'trading-bot-uyye0w'
-primary_region = 'iad'
+# Fly.io config. The `app` line is omitted intentionally — `fly deploy`
+# (or the GitHub auto-deploy) will use whichever app the repo is connected to.
+primary_region = "iad"
 
 [build]
+
+[deploy]
+  # Initialize SQLite schema before the new release goes live.
+  release_command = "python -m src.core.init_db"
 
 [env]
   ALPACA_PAPER = 'true'
