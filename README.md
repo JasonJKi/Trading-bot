@@ -7,6 +7,8 @@ Copycat, News/Sentiment) on a single Alpaca paper account so you can see
 which ones survive periods of high volatility before risking real money.
 
 For the full operating manual see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+For ops procedures (backups, secrets, DR) see [`OPS.md`](./OPS.md).
+To wire up a new data source see [`docs/data-sources.md`](./docs/data-sources.md).
 
 ## What's in here
 
