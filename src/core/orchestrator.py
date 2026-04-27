@@ -1,16 +1,44 @@
-"""Run all enabled bots, reconcile target positions to actual orders, persist state."""
+"""Run all enabled bots, reconcile target positions to actual orders, persist state.
+
+Order pipeline (v2):
+  1. Strategy emits target_positions(ctx).
+  2. We compute deltas vs the per-bot ledger (BotPosition).
+  3. For each delta we (a) skip if an in-flight Order already covers it,
+     (b) generate a deterministic client_order_id,
+     (c) write an Order row in `new` state,
+     (d) submit to the broker and stash the broker_order_id.
+  4. Reconciler runs every ~30s, polls open orders, applies fills to the
+     ledger, and writes Trade + AuditEvent rows.
+
+This separates "intent" (Order) from "fill" (Trade) so partial fills, rejects,
+and crashes mid-submit are all observable.
+"""
 from __future__ import annotations
 
 import argparse
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from sqlalchemy import select
 
 from src.config import Settings, get_settings
-from src.core.broker import BrokerAdapter, Position
-from src.core.store import EquitySnapshot, Signal as SignalRow, Trade, init_db, session_scope
+from src.core.broker import BrokerAdapter
+from src.core.reconciler import open_orders_for, reconcile_open_orders
+from src.core.store import (
+    BotPosition,
+    EquitySnapshot,
+    Order,
+    Signal as SignalRow,
+    init_db,
+    record_audit,
+    session_scope,
+)
 from src.core.strategy import Strategy, StrategyContext, TargetPosition, utc_now
 
 log = logging.getLogger(__name__)
+
+RECONCILE_INTERVAL_SEC = 30
 
 
 @dataclass(slots=True)
@@ -21,7 +49,6 @@ class BotRunResult:
 
 
 def load_enabled_bots(settings: Settings) -> list[Strategy]:
-    """Instantiate enabled strategies. Imported lazily to avoid hard deps for unused bots."""
     from src.bots.momentum import MomentumStrategy
     from src.bots.mean_reversion import MeanReversionStrategy
     from src.bots.congress import CongressStrategy
@@ -62,15 +89,16 @@ class Orchestrator:
         log.info("trading-bot starting — mode=%s", mode)
         log.info("db=%s", self.settings.database_url)
         log.info(
-            "caps: per_bot=$%s per_position=%.1f%% global_dd=%.1f%%",
+            "caps: per_bot=$%s per_position=%.1f%% global_dd=%.1f%% per_bot_dd=%.1f%%",
             f"{self.settings.per_bot_cap:,.0f}",
             self.settings.per_position_pct * 100,
             self.settings.global_max_drawdown * 100,
+            self.settings.per_bot_max_drawdown * 100,
         )
         if not self.bots:
             log.warning("no bots enabled — set ENABLED_BOTS in env")
         for bot in self.bots:
-            log.info("  bot=%-16s schedule=%s", bot.id, bot.schedule)
+            log.info("  bot=%-16s v=%-5s schedule=%s", bot.id, bot.version, bot.schedule)
         if not (self.settings.alpaca_api_key and self.settings.alpaca_api_secret):
             log.warning("ALPACA_API_KEY / ALPACA_API_SECRET not set — bot will fail on first tick")
         log.info("=" * 60)
@@ -80,46 +108,60 @@ class Orchestrator:
         if not self.bots:
             self.setup()
         if self._global_drawdown_breached():
+            record_audit(
+                "global_dd_halt",
+                "global drawdown breached — all bots halted",
+                severity="critical",
+            )
             log.error("global drawdown breached — halting all bots")
             return []
         results = []
         for bot in self.bots:
+            if not self._bot_is_enabled(bot.id):
+                log.info("bot %s is paused — skipping", bot.id)
+                continue
             results.append(self._run_bot(bot))
         return results
 
     def _run_bot(self, bot: Strategy) -> BotRunResult:
         bot_alloc = self.settings.per_bot_cap
         try:
-            account_equity = self.broker.equity()
+            self.broker.equity()  # connectivity probe
         except Exception as exc:  # pragma: no cover - network-dependent
             log.exception("could not fetch account equity: %s", exc)
+            record_audit(
+                "broker_error", str(exc), strategy_id=bot.id, severity="error"
+            )
             return BotRunResult(bot.id, 0, 0)
 
-        all_positions = self.broker.positions()
-        bot_positions = self._positions_for_bot(bot.id, all_positions)
+        bot_positions = self._ledger_positions(bot.id)
         ctx = StrategyContext(
             now=utc_now(),
-            cash=max(account_equity - sum(p.market_value for p in bot_positions.values()), 0.0),
+            cash=bot_alloc - sum(p.qty * p.avg_price for p in bot_positions.values()),
             positions={s: p.qty for s, p in bot_positions.items()},
             bot_equity=bot_alloc,
         )
 
         try:
             targets = bot.target_positions(ctx)
-        except Exception:
+        except Exception as exc:
             log.exception("bot %s failed during target_positions", bot.id)
+            record_audit(
+                "bot_error", f"target_positions raised: {exc}",
+                strategy_id=bot.id, severity="error",
+            )
             return BotRunResult(bot.id, 0, 0)
 
         submitted = 0
         skipped = 0
         target_by_symbol = {t.symbol: t for t in targets}
 
-        # Persist signals (even non-acted ones — useful for audit).
         with session_scope() as sess:
             for t in targets:
                 sess.add(
                     SignalRow(
                         strategy_id=bot.id,
+                        strategy_version=bot.version,
                         symbol=t.symbol,
                         direction="long" if t.weight > 0 else "short" if t.weight < 0 else "flat",
                         strength=abs(t.weight),
@@ -127,17 +169,16 @@ class Orchestrator:
                     )
                 )
 
-        # Reconcile: close anything in current positions but absent from target.
+        # Close anything held by this bot but absent from current targets.
         for symbol, pos in bot_positions.items():
             if symbol not in target_by_symbol and pos.qty != 0:
-                ok = self._submit_and_record(bot, symbol, "sell", abs(pos.qty), bot_alloc)
+                ok = self._submit_intent(bot, symbol, "sell" if pos.qty > 0 else "buy", abs(pos.qty), bot_alloc)
                 submitted += int(ok)
                 skipped += int(not ok)
 
         # Open or resize toward target weights.
         for t in targets:
             current_qty = bot_positions[t.symbol].qty if t.symbol in bot_positions else 0.0
-            target_notional = t.weight * bot_alloc
             try:
                 price = self.broker.price(t.symbol)
             except Exception:  # pragma: no cover - network-dependent
@@ -147,75 +188,124 @@ class Orchestrator:
             if price <= 0:
                 skipped += 1
                 continue
-            target_qty = target_notional / price
+            target_qty = (t.weight * bot_alloc) / price
             delta = target_qty - current_qty
-            if abs(delta * price) < 1.0:  # ignore micro-rebalances
+            if abs(delta * price) < 1.0:
                 continue
             side = "buy" if delta > 0 else "sell"
-            ok = self._submit_and_record(bot, t.symbol, side, abs(delta), bot_alloc)
+            ok = self._submit_intent(bot, t.symbol, side, abs(delta), bot_alloc)
             submitted += int(ok)
             skipped += int(not ok)
 
-        # Snapshot equity for this bot.
+        # Snapshot bot equity (mark-to-market against the ledger).
+        position_value = 0.0
+        for sym, pos in bot_positions.items():
+            try:
+                position_value += pos.qty * self.broker.price(sym)
+            except Exception:
+                position_value += pos.qty * pos.avg_price
         with session_scope() as sess:
-            position_value = sum(p.market_value for p in bot_positions.values())
+            cash = bot_alloc - sum(p.qty * p.avg_price for p in bot_positions.values())
             sess.add(
                 EquitySnapshot(
                     strategy_id=bot.id,
-                    cash=ctx.cash,
+                    cash=cash,
                     position_value=position_value,
-                    total_equity=ctx.cash + position_value,
+                    total_equity=cash + position_value,
                 )
             )
 
         return BotRunResult(bot.id, submitted, skipped)
 
-    # --- helpers --------------------------------------------------------
-    def _submit_and_record(
+    # --- order submission with idempotency + in-flight guard ------------
+    def _submit_intent(
         self, bot: Strategy, symbol: str, side: str, qty: float, alloc: float
     ) -> bool:
-        try:
-            res = self.broker.submit(symbol, side, qty, alloc)
-        except Exception:
-            log.exception("order submit failed for %s %s %s", bot.id, side, symbol)
+        in_flight = open_orders_for(bot.id, symbol)
+        if in_flight:
+            log.info(
+                "skipping %s %s %s — in-flight order %s status=%s",
+                bot.id, side, symbol, in_flight[0].client_order_id, in_flight[0].status,
+            )
             return False
-        if res is None:
-            return False
+
+        client_order_id = BrokerAdapter.make_client_order_id(bot.id, symbol)
+        # Persist intent BEFORE talking to the broker.
         with session_scope() as sess:
             sess.add(
-                Trade(
+                Order(
                     strategy_id=bot.id,
+                    strategy_version=bot.version,
                     symbol=symbol,
                     side=side,
-                    qty=res.qty,
-                    price=res.price,
-                    notional=res.qty * res.price,
-                    order_id=res.order_id,
-                    meta={},
+                    qty=qty,
+                    client_order_id=client_order_id,
+                    status="new",
+                    submitted_at=datetime.now(timezone.utc),
+                    meta={"alloc": alloc},
                 )
             )
+
+        try:
+            res = self.broker.submit(symbol, side, qty, alloc, client_order_id)
+        except Exception as exc:
+            log.exception("broker submit failed for %s %s %s", bot.id, side, symbol)
+            with session_scope() as sess:
+                row = sess.execute(
+                    select(Order).where(Order.client_order_id == client_order_id)
+                ).scalar_one()
+                row.status = "rejected"
+                row.error = str(exc)[:500]
+            record_audit(
+                "order_submit_failed", str(exc),
+                strategy_id=bot.id, severity="error",
+                client_order_id=client_order_id,
+            )
+            return False
+
+        if res is None:
+            with session_scope() as sess:
+                row = sess.execute(
+                    select(Order).where(Order.client_order_id == client_order_id)
+                ).scalar_one()
+                row.status = "canceled"
+                row.error = "trimmed to zero by risk caps"
+            return False
+
+        with session_scope() as sess:
+            row = sess.execute(
+                select(Order).where(Order.client_order_id == client_order_id)
+            ).scalar_one()
+            row.broker_order_id = res.order_id
+            # The reconciler is the single source of truth for fills. We hold our
+            # local status at 'accepted' until reconcile picks up the broker's
+            # filled/canceled/etc state and applies the fill to the ledger.
+            row.status = "accepted"
+        record_audit(
+            "order_submitted",
+            f"{side} {qty} {symbol} @ market",
+            strategy_id=bot.id,
+            client_order_id=client_order_id,
+            broker_order_id=res.order_id,
+        )
         return True
 
-    def _positions_for_bot(
-        self, strategy_id: str, all_positions: dict[str, Position]
-    ) -> dict[str, Position]:
-        """Best-effort allocation of broker positions to a bot.
-
-        Alpaca returns one position per symbol regardless of which bot opened it. Without
-        a sub-account model, we attribute a position to the most recent bot that traded
-        the symbol. This is a known limitation — documented for the user.
-        """
+    # --- helpers --------------------------------------------------------
+    def _ledger_positions(self, strategy_id: str) -> dict[str, BotPosition]:
         with session_scope() as sess:
-            from sqlalchemy import select
+            rows = sess.execute(
+                select(BotPosition).where(BotPosition.strategy_id == strategy_id)
+            ).scalars().all()
+            sess.expunge_all()
+        return {r.symbol: r for r in rows}
 
-            stmt = (
-                select(Trade.symbol, Trade.strategy_id)
-                .order_by(Trade.ts.desc())
-            )
-            seen: dict[str, str] = {}
-            for sym, sid in sess.execute(stmt).all():
-                seen.setdefault(sym, sid)
-        return {s: p for s, p in all_positions.items() if seen.get(s) == strategy_id}
+    def _bot_is_enabled(self, strategy_id: str) -> bool:
+        from src.core.store import BotStatus
+        with session_scope() as sess:
+            row = sess.execute(
+                select(BotStatus).where(BotStatus.strategy_id == strategy_id)
+            ).scalar_one_or_none()
+        return row is None or row.state == "enabled"
 
     def _global_drawdown_breached(self) -> bool:
         try:
@@ -240,19 +330,28 @@ def main() -> None:  # pragma: no cover - CLI entrypoint
     orch = Orchestrator()
     orch.setup()
     if args.once:
+        reconcile_open_orders(orch.broker)
         for r in orch.run_once():
             log.info("bot=%s submitted=%d skipped=%d", r.strategy_id, r.submitted, r.skipped)
+        reconcile_open_orders(orch.broker)
         return
 
-    # Long-running mode: APScheduler with each bot's own cron.
     from apscheduler.schedulers.blocking import BlockingScheduler
     from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
 
     sched = BlockingScheduler(timezone="UTC")
     for bot in orch.bots:
         trigger = CronTrigger(**bot.schedule)
         sched.add_job(lambda b=bot: orch._run_bot(b), trigger, id=bot.id, replace_existing=True)
         log.info("scheduled %s: %s", bot.id, bot.schedule)
+    sched.add_job(
+        lambda: reconcile_open_orders(orch.broker),
+        IntervalTrigger(seconds=RECONCILE_INTERVAL_SEC),
+        id="reconciler",
+        replace_existing=True,
+    )
+    log.info("scheduled reconciler: every %ss", RECONCILE_INTERVAL_SEC)
     sched.start()
 
 
