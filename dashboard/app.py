@@ -15,7 +15,17 @@ from sqlalchemy import select
 
 from src.config import get_settings
 from src.core import metrics
-from src.core.store import EquitySnapshot, Signal, Trade, init_db, session_scope
+from src.core.store import (
+    AuditEvent,
+    BotPosition,
+    BotStatus,
+    EquitySnapshot,
+    Order,
+    Signal,
+    Trade,
+    init_db,
+    session_scope,
+)
 
 
 st.set_page_config(
@@ -181,6 +191,91 @@ def _load_signals() -> pd.DataFrame:
             )
         ).all()
     return pd.DataFrame(rows, columns=["ts", "strategy_id", "symbol", "direction", "strength"])
+
+
+@st.cache_data(ttl=15)
+def _load_orders() -> pd.DataFrame:
+    init_db()
+    with session_scope() as sess:
+        rows = sess.execute(
+            select(
+                Order.ts,
+                Order.strategy_id,
+                Order.symbol,
+                Order.side,
+                Order.qty,
+                Order.status,
+                Order.filled_qty,
+                Order.filled_avg_price,
+                Order.client_order_id,
+                Order.broker_order_id,
+                Order.error,
+            )
+        ).all()
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "ts", "strategy_id", "symbol", "side", "qty", "status",
+            "filled_qty", "filled_avg_price", "client_order_id",
+            "broker_order_id", "error",
+        ],
+    )
+
+
+@st.cache_data(ttl=15)
+def _load_bot_positions() -> pd.DataFrame:
+    init_db()
+    with session_scope() as sess:
+        rows = sess.execute(
+            select(
+                BotPosition.strategy_id,
+                BotPosition.symbol,
+                BotPosition.qty,
+                BotPosition.avg_price,
+                BotPosition.cost_basis,
+                BotPosition.opened_at,
+                BotPosition.updated_at,
+            )
+        ).all()
+    return pd.DataFrame(
+        rows,
+        columns=["strategy_id", "symbol", "qty", "avg_price", "cost_basis", "opened_at", "updated_at"],
+    )
+
+
+@st.cache_data(ttl=15)
+def _load_audit(limit: int = 200) -> pd.DataFrame:
+    init_db()
+    with session_scope() as sess:
+        rows = sess.execute(
+            select(
+                AuditEvent.ts,
+                AuditEvent.kind,
+                AuditEvent.severity,
+                AuditEvent.strategy_id,
+                AuditEvent.message,
+            ).order_by(AuditEvent.ts.desc()).limit(limit)
+        ).all()
+    return pd.DataFrame(rows, columns=["ts", "kind", "severity", "strategy_id", "message"])
+
+
+@st.cache_data(ttl=10)
+def _load_bot_status() -> pd.DataFrame:
+    init_db()
+    with session_scope() as sess:
+        rows = sess.execute(
+            select(
+                BotStatus.strategy_id,
+                BotStatus.state,
+                BotStatus.reason,
+                BotStatus.paper_validated_at,
+                BotStatus.updated_at,
+            )
+        ).all()
+    return pd.DataFrame(
+        rows,
+        columns=["strategy_id", "state", "reason", "paper_validated_at", "updated_at"],
+    )
 
 
 @st.cache_data(ttl=20)
@@ -647,6 +742,140 @@ def _render_trades(trades: pd.DataFrame) -> None:
     )
 
 
+_STATUS_COLORS = {
+    "filled": "#3FB950",
+    "accepted": "#58A6FF",
+    "new": "#8B949E",
+    "partially_filled": "#D29922",
+    "canceled": "#8B949E",
+    "rejected": "#F85149",
+    "expired": "#F85149",
+}
+
+
+def _render_orders(orders: pd.DataFrame) -> None:
+    if orders.empty:
+        st.info("No orders submitted yet.")
+        return
+    st.markdown("<div class='section-h'>Most recent orders</div>", unsafe_allow_html=True)
+
+    # Status breakdown.
+    counts = orders["status"].value_counts().to_dict()
+    cols = st.columns(min(len(counts), 6) or 1)
+    for i, (status, n) in enumerate(counts.items()):
+        color = _STATUS_COLORS.get(status, "#8B949E")
+        cols[i % len(cols)].markdown(
+            f"""
+            <div class="tile" style="border-left:4px solid {color}">
+              <div class="label">{status}</div>
+              <div class="value">{n}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.dataframe(
+        orders.sort_values("ts", ascending=False).head(200).style.format(
+            {
+                "qty": "{:.4f}",
+                "filled_qty": "{:.4f}",
+                "filled_avg_price": "${:.2f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+
+def _render_bot_positions(bot_positions: pd.DataFrame) -> None:
+    if bot_positions.empty:
+        st.info("No positions tracked in the per-bot ledger yet.")
+        return
+    st.markdown("<div class='section-h'>Per-bot position ledger</div>", unsafe_allow_html=True)
+    st.caption(
+        "This is our internal attribution. Each row is a (bot, symbol) pair. "
+        "Compare with the broker's positions on the Positions tab."
+    )
+    st.dataframe(
+        bot_positions.sort_values(["strategy_id", "symbol"]).style.format(
+            {
+                "qty": "{:.4f}",
+                "avg_price": "${:.2f}",
+                "cost_basis": "${:,.2f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+
+_SEVERITY_BG = {
+    "info": "#1F6FEB22",
+    "warning": "#D2992422",
+    "error": "#F8514922",
+    "critical": "#A81E1E55",
+}
+
+
+def _render_audit(events: pd.DataFrame) -> None:
+    if events.empty:
+        st.info("No audit events yet.")
+        return
+    st.markdown("<div class='section-h'>Most recent events (last 200)</div>", unsafe_allow_html=True)
+
+    # Severity breakdown.
+    counts = events["severity"].value_counts().to_dict()
+    cols = st.columns(min(len(counts), 4) or 1)
+    for i, (sev, n) in enumerate(counts.items()):
+        cols[i % len(cols)].markdown(
+            f"""
+            <div class="tile" style="background:{_SEVERITY_BG.get(sev, '#161B22')}">
+              <div class="label">{sev}</div>
+              <div class="value">{n}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.dataframe(events, use_container_width=True, height=500)
+
+
+def _render_bot_status(bot_status: pd.DataFrame) -> None:
+    st.markdown("<div class='section-h'>Bot operational state</div>", unsafe_allow_html=True)
+    if bot_status.empty:
+        st.info("No bot_status rows yet — they're created by the orchestrator on first cycle.")
+        st.caption(
+            "Use the CLI to manage state:\n\n"
+            "```\npython -m src.cli pause   --strategy momentum --reason \"manual hold\"\n"
+            "python -m src.cli enable  --strategy momentum\n"
+            "python -m src.cli graduate --strategy momentum\n```"
+        )
+        return
+    cols = st.columns(min(len(bot_status), 3) or 1)
+    for i, row in bot_status.iterrows():
+        state_color = {
+            "enabled": "#3FB950",
+            "paused": "#D29922",
+            "disabled": "#F85149",
+        }.get(row["state"], "#8B949E")
+        validated = (
+            row["paper_validated_at"].strftime("%Y-%m-%d") if row["paper_validated_at"] else "no"
+        )
+        cols[i % len(cols)].markdown(
+            f"""
+            <div class="card" style="border-left:4px solid {state_color}">
+              <h3>{row['strategy_id']}</h3>
+              <div class="muted">state: <b style="color:{state_color}">{row['state']}</b></div>
+              <div class="muted">paper-validated: {validated}</div>
+              <hr style="border-color:#21262D;margin:10px 0">
+              <div style="font-size:0.85em">{row['reason'] or '—'}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.caption(
+        "Pause / enable / graduate from the CLI:  `python -m src.cli status`"
+    )
+
+
 # --- main -----------------------------------------------------------------
 def main() -> None:
     if not _password_gate():
@@ -662,9 +891,22 @@ def main() -> None:
     trades_df = _load_trades()
     signals_df = _load_signals()
     positions_df = _load_positions()
+    orders_df = _load_orders()
+    bot_positions_df = _load_bot_positions()
+    audit_df = _load_audit()
+    bot_status_df = _load_bot_status()
 
     strategies_with_data = sorted(eq_df["strategy_id"].unique()) if not eq_df.empty else []
-    tab_names = ["Overview", "Leaderboard", "Positions", "Signals", "Trades"]
+    tab_names = [
+        "Overview",
+        "Leaderboard",
+        "Bots",
+        "Positions",
+        "Orders",
+        "Trades",
+        "Signals",
+        "Audit",
+    ]
     tab_names += strategies_with_data
     tabs = st.tabs(tab_names)
 
@@ -675,12 +917,20 @@ def main() -> None:
     with tabs[1]:
         _render_leaderboard(eq_df, trades_df)
     with tabs[2]:
-        _render_positions(positions_df)
+        _render_bot_status(bot_status_df)
+        st.divider()
+        _render_bot_positions(bot_positions_df)
     with tabs[3]:
-        _render_signals(signals_df)
+        _render_positions(positions_df)
     with tabs[4]:
+        _render_orders(orders_df)
+    with tabs[5]:
         _render_trades(trades_df)
-    for sid, tab in zip(strategies_with_data, tabs[5:]):
+    with tabs[6]:
+        _render_signals(signals_df)
+    with tabs[7]:
+        _render_audit(audit_df)
+    for sid, tab in zip(strategies_with_data, tabs[8:]):
         with tab:
             st.header(sid)
             _render_bot_tab(sid, eq_df, trades_df)
