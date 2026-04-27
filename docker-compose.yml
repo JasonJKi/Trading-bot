@@ -1,0 +1,47 @@
+# Local development stack. Run with:
+#   docker compose up                  (uses SQLite, single container)
+#   docker compose --profile postgres up   (adds Postgres for serious local use)
+#
+# The same image runs in production on Fly. Difference is only the env file.
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: trading-bot:local
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/trading.db}
+      LOG_FORMAT: ${LOG_FORMAT:-pretty}
+    ports:
+      - "8080:8080"      # Streamlit dashboard
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/_stcore/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trader_local_only
+      POSTGRES_DB: trading
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trader -d trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

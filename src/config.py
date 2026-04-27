@@ -14,28 +14,45 @@ LIVE_CONFIRM_TOKEN = "YES_I_MEAN_IT"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # --- broker ---
     alpaca_api_key: str = ""
     alpaca_api_secret: str = ""
     alpaca_paper: bool = True
     alpaca_live_confirm: str = ""
 
+    # --- storage ---
     database_url: str = f"sqlite:///{REPO_ROOT / 'data' / 'trading.db'}"
 
+    # --- capital + risk ---
     account_starting_equity: float = 100_000.0
     per_bot_cap: float = 25_000.0
     per_position_pct: float = 0.05
     global_max_drawdown: float = 0.10
+    per_bot_max_drawdown: float = 0.15
 
+    # --- integrations ---
     quiver_api_key: str = ""
     newsapi_key: str = ""
 
+    # --- bot enablement / universes ---
     enabled_bots: str = "momentum,mean_reversion"
-
     momentum_universe: str = "SPY,QQQ,AAPL,MSFT,NVDA,AMZN,META,GOOGL,TSLA"
     mean_reversion_universe: str = "SPY,QQQ,IWM,DIA"
     crypto_universe: str = "BTC/USD,ETH/USD"
 
+    # --- alerting ---
+    slack_webhook_url: str = ""
+    discord_webhook_url: str = ""
+    alert_email_to: str = ""
+    alert_email_from: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+
+    # --- logging ---
     log_level: str = "INFO"
+    log_format: str = "auto"  # auto | pretty | json
 
     @field_validator("alpaca_paper", mode="before")
     @classmethod

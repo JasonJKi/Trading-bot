@@ -230,7 +230,9 @@ class Orchestrator:
 
 
 def main() -> None:  # pragma: no cover - CLI entrypoint
-    logging.basicConfig(level=get_settings().log_level)
+    from src.core.logging_setup import setup_logging
+
+    setup_logging(get_settings().log_level)
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true", help="Run all bots once and exit.")
     args = parser.parse_args()
