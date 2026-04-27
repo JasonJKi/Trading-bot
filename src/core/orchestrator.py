@@ -150,11 +150,17 @@ class Orchestrator:
             return BotRunResult(bot.id, 0, 0)
 
         bot_positions = self._ledger_positions(bot.id)
+        try:
+            from src.core.regime import detect as detect_regime
+            regime_label = detect_regime().label
+        except Exception:
+            regime_label = "chop"
         ctx = StrategyContext(
             now=utc_now(),
             cash=bot_alloc - sum(p.qty * p.avg_price for p in bot_positions.values()),
             positions={s: p.qty for s, p in bot_positions.items()},
             bot_equity=bot_alloc,
+            regime=regime_label,
         )
 
         try:

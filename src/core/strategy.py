@@ -30,6 +30,7 @@ class StrategyContext:
     cash: float
     positions: Mapping[str, float]  # symbol -> qty
     bot_equity: float
+    regime: str = "chop"  # bull / bear / chop / crisis
 
 
 class Strategy(ABC):
