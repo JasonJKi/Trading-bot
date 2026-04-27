@@ -31,6 +31,7 @@ dashboard = [
 backtest = [
     "vectorbt>=0.26",
     "ta>=0.11",
+    "optuna>=3.5",
 ]
 # News/sentiment FinBERT pipeline.
 sentiment = [
@@ -45,6 +46,7 @@ dev = [
     "plotly>=5.20",
     "vectorbt>=0.26",
     "ta>=0.11",
+    "optuna>=3.5",
 ]
 
 [project.scripts]

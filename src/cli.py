@@ -64,6 +64,83 @@ def backtest(strategy: str, start: str, end: str, capital: float) -> None:  # pr
 
 
 @main.command()
+@click.option("--strategy", required=True, help="Bot id, e.g. momentum")
+@click.option("--start", required=True)
+@click.option("--end", required=True)
+@click.option("--trials", default=30, type=int)
+@click.option("--train-days", default=180, type=int)
+@click.option("--test-days", default=30, type=int)
+def optimize(strategy: str, start: str, end: str, trials: int, train_days: int, test_days: int) -> None:  # pragma: no cover
+    """Walk-forward optimize a strategy's params over a date range.
+
+    Reports median OOS Sharpe + overfit gap. Refuse to deploy params if
+    overfit_gap > 1.0 (in-sample beat OOS by >1.0 Sharpe).
+    """
+    import json
+    from datetime import datetime as dt
+
+    from src.backtest.optimize import walk_forward
+    from src.bots.momentum import MomentumStrategy
+    from src.bots.mean_reversion import MeanReversionStrategy
+
+    if strategy == "momentum":
+        def factory(p):
+            return MomentumStrategy({
+                "fast": int(p.get("fast", 20)),
+                "slow": int(p.get("slow", 50)),
+                "adx_threshold": float(p.get("adx_threshold", 25.0)),
+            })
+
+        def space(trial):
+            return {
+                "fast": trial.suggest_int("fast", 5, 30),
+                "slow": trial.suggest_int("slow", 35, 120),
+                "adx_threshold": trial.suggest_float("adx_threshold", 15.0, 35.0),
+            }
+        universe = factory({}).universe()
+    elif strategy == "mean_reversion":
+        def factory(p):
+            return MeanReversionStrategy({
+                "rsi_buy": float(p.get("rsi_buy", 10.0)),
+                "rsi_exit": float(p.get("rsi_exit", 60.0)),
+            })
+
+        def space(trial):
+            return {
+                "rsi_buy": trial.suggest_float("rsi_buy", 5.0, 25.0),
+                "rsi_exit": trial.suggest_float("rsi_exit", 50.0, 80.0),
+            }
+        universe = factory({}).universe()
+    else:
+        raise SystemExit(f"unknown strategy: {strategy}")
+
+    res = walk_forward(
+        factory,
+        universe=universe,
+        start=dt.fromisoformat(start),
+        end=dt.fromisoformat(end),
+        param_space=space,
+        n_trials=trials,
+        train_days=train_days,
+        test_days=test_days,
+    )
+    click.echo(json.dumps(
+        {
+            "strategy": res.strategy_id,
+            "best_params": res.best_params,
+            "median_oos_sharpe": round(res.median_oos_sharpe, 3),
+            "best_in_sample_sharpe": round(res.best_in_sample_sharpe, 3),
+            "overfit_gap": round(res.overfit_gap, 3),
+            "robust": res.robust,
+            "windows": len(res.per_window),
+        },
+        indent=2,
+    ))
+    if not res.robust:
+        click.echo("\nWARNING: not robust — refuse to deploy these params.", err=True)
+
+
+@main.command()
 def dashboard() -> None:  # pragma: no cover
     """Launch the Streamlit dashboard locally."""
     import subprocess
