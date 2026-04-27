@@ -56,12 +56,14 @@ def load_enabled_bots(settings: Settings) -> list[Strategy]:
     from src.bots.mean_reversion import MeanReversionStrategy
     from src.bots.congress import CongressStrategy
     from src.bots.sentiment import SentimentStrategy
+    from src.bots.cross_momentum import CrossSectionalMomentum
 
     registry: dict[str, type[Strategy]] = {
         "momentum": MomentumStrategy,
         "mean_reversion": MeanReversionStrategy,
         "congress": CongressStrategy,
         "sentiment": SentimentStrategy,
+        "xs_momentum": CrossSectionalMomentum,
     }
     bots: list[Strategy] = []
     for name in settings.enabled_bot_list:

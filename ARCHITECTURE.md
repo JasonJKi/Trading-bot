@@ -87,11 +87,15 @@ This guarantees:
 | Control | Defined in | Default |
 |---|---|---|
 | Per-position cap | `BrokerAdapter.submit` | 5% of bot allocation |
-| Per-bot capital cap | settings | $25,000 |
+| Per-bot capital cap | settings | $25,000 (overridden by allocator) |
+| Dynamic per-bot capital | `allocator.allocate` | softmax(30d Sharpe), 5–50% bounds |
+| Vol-targeted sizing | `sizing.vol_target_qty` | optional, target=15% annual |
 | Per-bot rolling 30-day DD | `risk.evaluate_circuit_breaker` | 15% |
 | Global drawdown halt | `Orchestrator._global_drawdown_breached` | 10% |
 | Live-mode token | `Settings.assert_safe_to_trade` | required |
 | Graduation gate | `risk.assert_all_paper_validated` | 30d + Sharpe ≥ 1.0 |
+| Walk-forward param robustness | `backtest.optimize.WalkForwardResult.robust` | OOS Sharpe ≥ 0.5, gap ≤ 1.0 |
+| Regime stand-down | `Strategy` reads `ctx.regime` | crisis → flat |
 
 ## Failure modes & alerts
 

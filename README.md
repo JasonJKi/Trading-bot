@@ -24,12 +24,23 @@ src/
     alerter.py              # Slack / Discord / email / console alerting
     logging_setup.py        # rich (TTY) or JSON (prod) structured logs
   bots/
-    momentum.py             # EMA cross + MACD + ADX
+    momentum.py             # time-series momentum: EMA cross + MACD + ADX
+    cross_momentum.py       # cross-sectional momentum: rank universe + vol-target sizing + regime
     mean_reversion.py       # RSI(2) + Bollinger Band
     congress.py             # placeholder (needs Quiver API key)
     sentiment.py            # placeholder (needs FinBERT install)
-  data/bars.py              # yfinance OHLCV fetcher
-  backtest/runner.py        # walk-forward backtest using the same Strategy classes
+  data/
+    bars.py                 # yfinance OHLCV fetcher
+    features.py             # vol, z-score, beta, dispersion, breadth, correlation, …
+  core/
+    regime.py               # bull/bear/chop/crisis classifier (VIX + breadth + trend)
+    allocator.py            # softmax(rolling Sharpe) dynamic per-bot capital
+    sizing.py               # vol-targeted position sizing (risk-parity style)
+    healthz.py              # /healthz endpoint on :8081 for uptime monitors
+    backup.py               # online SQLite snapshot, gzipped, retention-aware
+  backtest/
+    runner.py               # walk-forward backtest using the same Strategy classes
+    optimize.py             # Optuna walk-forward parameter search with overfit-gap report
   cli.py                    # run | backtest | dashboard | graduate | pause | enable | status
 dashboard/
   app.py                    # Streamlit UI (read-only): live equity, positions, bot cards
