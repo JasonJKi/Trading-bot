@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from src.core.alerter import alert
 from src.core.broker import BrokerAdapter
 from src.core.store import (
     AuditEvent,
@@ -163,6 +164,14 @@ def reconcile_open_orders(broker: BrokerAdapter | None = None) -> int:
                     severity="warning" if o.status == "rejected" else "info",
                     order_id=o.broker_order_id,
                 )
+                if o.status == "rejected":
+                    alert(
+                        "error",
+                        f"Order rejected: {o.symbol}",
+                        f"bot={o.strategy_id} side={o.side} qty={o.qty} "
+                        f"err={o.error or 'unknown'}",
+                        strategy_id=o.strategy_id,
+                    )
             touched += 1
     return touched
 

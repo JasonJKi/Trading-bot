@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from src.config import Settings, get_settings
+from src.core.alerter import alert
 from src.core.broker import BrokerAdapter
 from src.core.reconciler import open_orders_for, reconcile_open_orders
 from src.core.store import (
@@ -82,6 +83,12 @@ class Orchestrator:
         for bot in self.bots:
             bot.on_start()
         self._log_startup_banner()
+        alert(
+            "info",
+            "trading-bot started",
+            f"mode={'PAPER' if self.settings.alpaca_paper else 'LIVE'} "
+            f"bots={[b.id for b in self.bots]}",
+        )
 
     def _log_startup_banner(self) -> None:
         mode = "PAPER" if self.settings.alpaca_paper else "LIVE"
@@ -108,10 +115,11 @@ class Orchestrator:
         if not self.bots:
             self.setup()
         if self._global_drawdown_breached():
-            record_audit(
-                "global_dd_halt",
-                "global drawdown breached — all bots halted",
-                severity="critical",
+            alert(
+                "critical",
+                "Global drawdown breached",
+                f"Account drawdown exceeded {self.settings.global_max_drawdown * 100:.0f}% — "
+                f"halting all bots.",
             )
             log.error("global drawdown breached — halting all bots")
             return []
