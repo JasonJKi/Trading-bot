@@ -409,7 +409,9 @@ def main() -> None:  # pragma: no cover - CLI entrypoint
     log.info("scheduled db_backup: 04:00 UTC daily")
 
     # Refresh data-source caches independently of the bots that consume them.
-    if "congress" in [b.id for b in orch.bots]:
+    bot_ids = [b.id for b in orch.bots]
+
+    if "congress" in bot_ids:
         from src.data.congress import refresh_cache as refresh_congress
 
         sched.add_job(
@@ -419,6 +421,34 @@ def main() -> None:  # pragma: no cover - CLI entrypoint
             replace_existing=True,
         )
         log.info("scheduled refresh_congress: every 1h")
+
+    if "sentiment" in bot_ids:
+        # Pull news every 5 min; score every 5 min (offset to avoid lock contention).
+        from src.bots.sentiment import _universe as sentiment_universe
+        from src.data.news import refresh_cache as refresh_news
+
+        sym_list = sentiment_universe()
+        sched.add_job(
+            lambda: refresh_news(sym_list, hours=4),
+            IntervalTrigger(minutes=5),
+            id="refresh_news",
+            replace_existing=True,
+        )
+        log.info("scheduled refresh_news: every 5m for %d symbols", len(sym_list))
+
+        try:
+            from src.data.sentiment import score_unscored
+            sched.add_job(
+                score_unscored,
+                IntervalTrigger(minutes=5, jitter=30),
+                id="score_sentiment",
+                replace_existing=True,
+            )
+            log.info("scheduled score_sentiment: every 5m (FinBERT)")
+        except ImportError:
+            log.warning(
+                "sentiment scoring unavailable: install '.[sentiment]' for FinBERT"
+            )
     sched.start()
 
 
