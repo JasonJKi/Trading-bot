@@ -39,6 +39,9 @@ class Strategy(ABC):
     id: str = "abstract"
     #: Human-readable name shown in the dashboard.
     name: str = "Abstract Strategy"
+    #: Bumped whenever signal-generating logic changes. Stamped on every signal,
+    #: trade, and order so historical rows stay reproducible.
+    version: str = "1"
     #: Cron-style schedule used by the orchestrator (APScheduler CronTrigger fields).
     schedule: dict = {"hour": "*", "minute": "5"}
 

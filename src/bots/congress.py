@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 class CongressStrategy(Strategy):
     id = "congress"
     name = "Congress Copycat"
+    version = "0.1"
     schedule = {"hour": "*/1", "minute": "30"}  # poll hourly
 
     def universe(self) -> list[str]:

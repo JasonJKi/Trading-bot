@@ -41,6 +41,7 @@ def _adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
 class MomentumStrategy(Strategy):
     id = "momentum"
     name = "Momentum / Trend"
+    version = "1.0"  # bump when signal logic changes
     schedule = {"day_of_week": "mon-fri", "hour": "20", "minute": "5"}  # daily after US close UTC
 
     def __init__(self, params: dict | None = None) -> None:

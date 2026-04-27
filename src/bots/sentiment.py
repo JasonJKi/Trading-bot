@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 class SentimentStrategy(Strategy):
     id = "sentiment"
     name = "News Sentiment (FinBERT)"
+    version = "0.1"
     schedule = {"hour": "13-21", "minute": "*/15"}  # US trading hours, every 15 min
 
     def universe(self) -> list[str]:
