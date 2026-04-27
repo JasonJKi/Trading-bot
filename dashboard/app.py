@@ -1,6 +1,9 @@
 """Streamlit dashboard. Pure reader — never moves money."""
 from __future__ import annotations
 
+import hmac
+import os
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -13,6 +16,34 @@ from src.core.store import EquitySnapshot, Signal, Trade, init_db, session_scope
 
 
 st.set_page_config(page_title="Trading Bot Dashboard", layout="wide")
+
+
+def _password_gate() -> bool:
+    """Block the rest of the app until the user enters the right password.
+
+    The password is read from the DASHBOARD_PASSWORD env var (set as a Fly secret).
+    If the env var is empty / unset, auth is disabled — useful for local dev only.
+    """
+    expected = os.environ.get("DASHBOARD_PASSWORD", "")
+    if not expected:
+        st.warning(
+            "DASHBOARD_PASSWORD is not set — dashboard is open to anyone with the URL. "
+            "Set the secret on Fly to enable auth.",
+            icon="⚠️",
+        )
+        return True
+
+    if st.session_state.get("auth_ok"):
+        return True
+
+    st.title("Trading Bot Dashboard")
+    pw = st.text_input("Password", type="password")
+    if pw and hmac.compare_digest(pw, expected):
+        st.session_state["auth_ok"] = True
+        st.rerun()
+    elif pw:
+        st.error("Incorrect password.")
+    return False
 
 
 @st.cache_data(ttl=30)
@@ -179,6 +210,8 @@ def _render_leaderboard(eq_df: pd.DataFrame, trades_df: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    if not _password_gate():
+        st.stop()
     settings = get_settings()
     st.title("Trading Bot Dashboard")
     mode = "PAPER" if settings.alpaca_paper else "LIVE"

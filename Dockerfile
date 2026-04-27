@@ -9,12 +9,17 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
 COPY dashboard ./dashboard
+COPY scripts ./scripts
 
-RUN pip install --upgrade pip && pip install .
+# Install base deps + dashboard extras (streamlit, plotly).
+RUN pip install --upgrade pip && pip install ".[dashboard]"
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chmod +x /app/scripts/run.sh
 VOLUME ["/app/data"]
 
 ENV DATABASE_URL=sqlite:////app/data/trading.db
 
-CMD ["python", "-m", "src.core.orchestrator"]
+EXPOSE 8080
+
+# Runs orchestrator + Streamlit dashboard in parallel; shares /app/data.
+CMD ["/app/scripts/run.sh"]

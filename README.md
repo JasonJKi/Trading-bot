@@ -86,20 +86,46 @@ real money when:
 | Global drawdown halt | 10% from starting equity | orchestrator |
 | Live-mode confirm token | required | `Settings.assert_safe_to_trade` |
 
-## Deploying
+## Deploying to Fly.io
 
-The bot is a long-running Python process and a SQLite file. **It does not
-fit Vercel** (serverless functions can't run APScheduler, WebSockets, or
-keep a SQLite file). Recommended hosts:
+The bot deploys as a single Fly app running two processes in one machine:
 
-- **Fly.io** — free tier covers a `shared-cpu-1x` 256 MB instance + small
-  volume; deploys from this repo via `fly deploy`. See `fly.toml`.
+- `python -m src.core.orchestrator` — the bot worker (no port).
+- `streamlit run dashboard/app.py` — the dashboard, served on port 8080.
+
+Both share the same SQLite file on a Fly volume. See `fly.toml` and
+`scripts/run.sh`.
+
+```bash
+# 0. From a laptop with flyctl installed
+fly launch --copy-config --no-deploy
+# (decline any prompt to add Postgres or another HTTP service)
+
+# 1. Create the volume (1 GB, same region as the app)
+fly volumes create data --size 1 --region iad
+
+# 2. Set Alpaca paper-trading secrets
+fly secrets set ALPACA_API_KEY=PK... ALPACA_API_SECRET=...
+
+# 3. Set a dashboard password — without this the dashboard logs a warning
+#    and is open to anyone with the URL.
+fly secrets set DASHBOARD_PASSWORD=$(openssl rand -hex 16)
+# Show it once so you can save it in your password manager:
+fly secrets list
+
+# 4. Deploy
+fly deploy
+```
+
+The dashboard will be at `https://<your-app>.fly.dev/`. The password gate uses
+constant-time comparison against the `DASHBOARD_PASSWORD` secret; for stronger
+auth, put Cloudflare Access in front of the same URL.
+
+**The bot does not fit Vercel** — serverless functions can't run APScheduler,
+WebSockets, or hold a SQLite file. If Fly doesn't suit you:
+
 - **Hetzner Cloud CX22** — ~$4.50/mo, 2 vCPU / 4 GB, best price/perf.
 - **Railway** — Vercel-style DX with long-running support, ~$5/mo.
-
-> If you expose the Streamlit dashboard publicly, put auth in front
-> (Tailscale, Cloudflare Access) — otherwise anyone who finds the URL
-> sees your trades.
 
 ## Backtesting
 

@@ -1,7 +1,8 @@
-# fly.toml app configuration file generated for trading-bot-cpg3lw on 2026-04-27T12:26:32Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# Fly.io config for trading-bot.
+# One app, two processes running in the same machine sharing the SQLite volume:
+#   - orchestrator (background worker, no port)
+#   - Streamlit dashboard (HTTP on 8080)
+# Auth on the dashboard is via a DASHBOARD_PASSWORD secret (see README).
 
 app = 'trading-bot-cpg3lw'
 primary_region = 'nrt'
@@ -20,15 +21,16 @@ primary_region = 'nrt'
   source = 'data'
   destination = '/app/data'
 
+# Worker must stay alive for cron schedules — do NOT auto-stop on idle.
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+  min_machines_running = 1
 
 [[vm]]
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
+  # Bumped 256 -> 512 MB to accommodate Streamlit + Plotly alongside the worker.
+  memory_mb = 512
