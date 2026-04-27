@@ -1,26 +1,34 @@
-# Fly.io config for the trading-bot worker.
-# Deliberately omits [app] so it works with any app name created via `fly launch`
-# or the Fly dashboard.
+# fly.toml app configuration file generated for trading-bot-cpg3lw on 2026-04-27T12:26:32Z
 #
-# This is a worker (background process) — there is no [http_service] / [[services]] block.
-# That is intentional: the bot doesn't listen on any port. Launch the dashboard
-# separately if you want it (different app or `fly machines run`).
-primary_region = "iad"
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'trading-bot-cpg3lw'
+primary_region = 'nrt'
 
 [build]
 
-[env]
-  ALPACA_PAPER = "true"
-  DATABASE_URL = "sqlite:////app/data/trading.db"
-  LOG_LEVEL = "INFO"
+[deploy]
+  release_command = 'python -m src.core.init_db'
 
-# Persistent volume for SQLite. Create the volume in the same region as the app
-# *before* deploying:  fly volumes create data --size 1 --region iad
-[mounts]
-  source = "data"
-  destination = "/app/data"
+[env]
+  ALPACA_PAPER = 'true'
+  DATABASE_URL = 'sqlite:////app/data/trading.db'
+  LOG_LEVEL = 'INFO'
+
+[[mounts]]
+  source = 'data'
+  destination = '/app/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 1
   memory_mb = 256
