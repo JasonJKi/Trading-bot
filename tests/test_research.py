@@ -54,7 +54,7 @@ def no_creds(monkeypatch):
 # ---- adapter degradation --------------------------------------------------
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro) if asyncio.get_event_loop().is_running() else asyncio.run(coro)
+    return asyncio.run(coro)
 
 
 def test_reddit_no_creds_returns_empty(no_creds):
@@ -113,8 +113,8 @@ def test_available_sources_filters_to_creds_present(no_creds):
 
 def test_documents_dedup_by_source_extid(temp_db):
     from src.core.store import ResearchDocument, ResearchQuery, session_scope
-    from src.research.pipeline import _persist_documents
     from src.research.sources.base import DocumentRow
+    from src.research.storage import persist_documents
 
     # Set up a fake query.
     with session_scope() as sess:
@@ -147,12 +147,12 @@ def test_documents_dedup_by_source_extid(temp_db):
         ),
     ]
 
-    new_ids = _persist_documents(qid, docs)
+    new_ids = persist_documents(qid, docs)
     # First insert returns ids for both unique rows; the duplicate hits ON CONFLICT.
     assert len(new_ids) == 2
 
     # Second pass: nothing is new (everything is already in the table).
-    new_ids2 = _persist_documents(qid, docs)
+    new_ids2 = persist_documents(qid, docs)
     assert new_ids2 == []
 
     with session_scope() as sess:
@@ -169,8 +169,8 @@ def test_findings_citation_remap(temp_db):
     from sqlalchemy import select
 
     from src.core.store import ResearchDocument, ResearchFinding, ResearchQuery, session_scope
-    from src.research.pipeline import _persist_documents, _persist_findings
     from src.research.sources.base import DocumentRow
+    from src.research.storage import persist_documents, persist_findings
 
     with session_scope() as sess:
         q = ResearchQuery(topic="t", status="running")
@@ -183,7 +183,7 @@ def test_findings_citation_remap(temp_db):
         DocumentRow(source="arxiv", external_id="B", url="u2", title="T2", content="y"),
         DocumentRow(source="github", external_id="42", url="u3", title="repo", content="z"),
     ]
-    _persist_documents(qid, docs)
+    persist_documents(qid, docs)
 
     findings = [
         Finding(
@@ -209,7 +209,7 @@ def test_findings_citation_remap(temp_db):
             tags=[],
         ),
     ]
-    n = _persist_findings(qid, findings, docs)
+    n = persist_findings(qid, findings, docs)
     assert n == 2
 
     with session_scope() as sess:
@@ -228,6 +228,7 @@ def test_findings_citation_remap(temp_db):
 # ---- agent wiring ---------------------------------------------------------
 
 def test_researcher_wires_one_tool_per_available_source(monkeypatch, no_creds):
+    pytest.importorskip("pydantic_ai", reason="install with pip install -e '.[research]'")
     """The researcher's tool count should match the number of credentialed sources.
 
     With no creds, only public sources (arxiv, hackernews, github) are registered.

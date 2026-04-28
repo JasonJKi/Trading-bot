@@ -1,9 +1,11 @@
 # Fly.io config for trading-bot.
-# One app, two processes running in the same machine sharing the SQLite volume:
-#   - orchestrator (background worker, no port)
-#   - FastAPI dashboard backend (HTTP on 8000)
-# The Next.js frontend (web/) ships separately — Vercel or another Fly app.
-# Auth on the API is via a DASHBOARD_PASSWORD secret (see README).
+# One Fly machine runs everything in one container:
+#   - orchestrator (background worker — no public port)
+#   - FastAPI on :8000 (serves /api/* AND the static Next.js dashboard at /)
+#   - SQLite on the persistent /app/data volume
+#
+# Auth on the dashboard is via the DASHBOARD_PASSWORD secret (cookie gate).
+# Set it with:  fly secrets set DASHBOARD_PASSWORD=$(openssl rand -hex 16)
 
 app = 'trading-bot-cpg3lw'
 primary_region = 'nrt'
@@ -17,6 +19,7 @@ primary_region = 'nrt'
   ALPACA_PAPER = 'true'
   DATABASE_URL = 'sqlite:////app/data/trading.db'
   LOG_LEVEL = 'INFO'
+  LOG_FORMAT = 'json'
 
 [[mounts]]
   source = 'data'
@@ -30,7 +33,17 @@ primary_region = 'nrt'
   auto_start_machines = true
   min_machines_running = 1
 
+  # Periodic health probe, used by Fly to mark the machine ready.
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '20s'
+    method = 'get'
+    path = '/api/health'
+
 [[vm]]
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 512
+  # 512 MB is tight with pandas+yfinance+orchestrator+uvicorn loaded simultaneously.
+  # Bump to 1 GB to leave headroom and avoid OOM-kills during regime detection.
+  memory_mb = 1024

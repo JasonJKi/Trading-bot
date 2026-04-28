@@ -1,13 +1,17 @@
 """FastAPI app — read-only dashboard backend over the bot's SQLite + Alpaca live data.
 
-Run locally:  uvicorn src.api.main:app --port 8000 --reload
+In dev: uvicorn src.api.main:app --port 8000 --reload  (Next.js dev server runs separately)
+In prod (Docker): the Next.js static export is bundled into web/out/ and served by this app.
 """
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import public_router, router
 from src.api.research_routes import router as research_router
@@ -41,6 +45,49 @@ app.add_middleware(
 app.include_router(public_router)
 app.include_router(router)
 app.include_router(research_router)
+
+
+# --- static dashboard --------------------------------------------------------
+# When running in production (Docker), Next.js was built with `output: "export"`
+# and the result lives at web/out/. We mount it under "/" so the dashboard and
+# the API share an origin (cookies "just work", no CORS preflight in prod).
+# In dev this directory is absent and we silently skip the mount — the Next.js
+# dev server on WEB_PORT serves the UI instead.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_STATIC_DIR = _REPO_ROOT / "web" / "out"
+
+
+def _maybe_mount_dashboard() -> None:
+    if not _STATIC_DIR.is_dir():
+        log.info("dashboard static dir not found at %s — dev mode", _STATIC_DIR)
+        return
+
+    # Mount /_next first (StaticFiles for ETag/Range support on JS/CSS chunks).
+    next_assets = _STATIC_DIR / "_next"
+    if next_assets.is_dir():
+        app.mount("/_next", StaticFiles(directory=next_assets), name="next-static")
+
+    # Catch-all SPA fallback. Registered last so /api/* and /_next/* win first.
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _spa_fallback(full_path: str) -> FileResponse:
+        # Don't swallow unknown API paths — those should 404 as JSON, not HTML.
+        if full_path.startswith("api/") or full_path.startswith("_next/"):
+            raise HTTPException(status_code=404)
+        # 1. Exact file in /web/out (favicon, robots.txt, /file.js, …).
+        candidate = _STATIC_DIR / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        # 2. Trailing-slash export (Next writes /positions/ as /positions/index.html).
+        as_dir = candidate / "index.html"
+        if as_dir.is_file():
+            return FileResponse(as_dir)
+        # 3. SPA fallback — let the client router handle unknown routes.
+        return FileResponse(_STATIC_DIR / "index.html")
+
+    log.info("dashboard mounted from %s", _STATIC_DIR)
+
+
+_maybe_mount_dashboard()
 
 
 @app.on_event("startup")
