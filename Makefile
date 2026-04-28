@@ -109,9 +109,10 @@ fly-secrets:  ## List configured Fly secrets.
 # ---------- remote Mac mini server ----------
 # Drives a remote macOS host via ssh + rsync. See deploy/README.md.
 #
-# Override the host on the command line, e.g. when away from home:
-#   make mac-deploy MAC_HOST=mac-remote
-MAC_HOST     ?= mac
+# Default targets the public SSH endpoint (`mac-remote`) since the laptop is
+# usually off-LAN. Override on the command line if you ever want LAN:
+#   make mac-deploy MAC_HOST=mac
+MAC_HOST     ?= mac-remote
 MAC_APP_DIR  ?= /Users/jason/Trading-bot
 MAC_LABELS   := com.tradingbot.orchestrator com.tradingbot.api
 

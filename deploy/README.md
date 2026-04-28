@@ -45,10 +45,11 @@ make mac-status        # launchctl print-state
 make mac-shell         # SSH into the server (interactive)
 ```
 
-Override the SSH host (e.g. when away from home):
+The default host is `mac-remote` (the public SSH endpoint). Override on the
+command line if you're on the LAN and want the faster local path:
 
 ```bash
-make mac-deploy MAC_HOST=mac-remote
+make mac-deploy MAC_HOST=mac
 ```
 
 ## Public access via Cloudflare Tunnel
