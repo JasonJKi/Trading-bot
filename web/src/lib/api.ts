@@ -20,7 +20,8 @@ async function http<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   health: () => http<import("./types").Health>("/api/health"),
-  authStatus: () => http<{ required: boolean }>("/api/auth/status"),
+  authStatus: () =>
+    http<{ required: boolean; authenticated: boolean }>("/api/auth/status"),
   login: (password: string) =>
     http<{ ok: boolean }>("/api/auth/login", {
       method: "POST",

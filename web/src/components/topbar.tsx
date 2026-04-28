@@ -58,7 +58,7 @@ export function Topbar() {
         <RefreshCcw size={14} className={refreshing ? "animate-spin" : ""} />
         Refresh
       </button>
-      {authStatus?.required && (
+      {authStatus?.required && authStatus.authenticated && (
         <button
           onClick={onLogout}
           className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] flex items-center gap-1.5 px-2 py-1 rounded hover:bg-[var(--color-surface-2)]"
@@ -66,6 +66,14 @@ export function Topbar() {
           <LogOut size={14} />
           Logout
         </button>
+      )}
+      {authStatus?.required && !authStatus.authenticated && (
+        <a
+          href="/login"
+          className="text-sm text-[var(--color-text)] flex items-center gap-1.5 px-3 py-1 rounded border border-[var(--color-border-strong)] hover:border-[var(--color-accent)]"
+        >
+          Sign in
+        </a>
       )}
     </header>
   );

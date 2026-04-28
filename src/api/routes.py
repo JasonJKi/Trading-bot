@@ -28,11 +28,13 @@ from functools import lru_cache
 from typing import Annotated
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import desc, func, select
 
 from src.api import schemas
 from src.api.auth import (
+    COOKIE_NAME,
+    _verify_session,
     auth_disabled,
     check_login_rate_limit,
     clear_cookie,
@@ -73,8 +75,24 @@ def health() -> schemas.HealthResponse:
 
 
 @public_router.get("/api/auth/status")
-def auth_status() -> dict:
-    return {"required": not auth_disabled()}
+def auth_status(tb_session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None) -> dict:
+    """Two flags:
+      required      — does the server enforce auth at all (DASHBOARD_PASSWORD set)?
+      authenticated — is THIS request signed in right now?
+
+    The frontend uses both: `required` decides whether to show a Sign-in
+    affordance at all; `authenticated` decides whether to show protected
+    nav items + the Logout button.
+    """
+    if auth_disabled():
+        # Server is open — every visitor is effectively "authenticated"
+        # for the purpose of UI affordances.
+        return {"required": False, "authenticated": True}
+    return {
+        "required": True,
+        "authenticated": tb_session is not None
+        and _verify_session(tb_session) is not None,
+    }
 
 
 @public_router.post("/api/auth/login", response_model=schemas.LoginResponse)
