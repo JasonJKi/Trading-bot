@@ -428,13 +428,30 @@ def _ensure_sqlite_dir(url: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
 
 
+_current_db_url: str | None = None
+_migrations_bootstrapped = False
+
+
 def init_db() -> None:
-    global _engine, _SessionLocal
+    """Idempotent. Routes call this on every hit; we cache the engine + skip
+    repeat migrations so two concurrent requests don't race alembic's global
+    EnvironmentContext (which raised KeyError: 'config' in production).
+
+    Recreates the engine + reruns migrations when DATABASE_URL changes,
+    which happens in tests that monkeypatch the env between cases.
+    """
+    global _engine, _SessionLocal, _current_db_url, _migrations_bootstrapped
     settings = get_settings()
     _ensure_sqlite_dir(settings.database_url)
-    _engine = create_engine(settings.database_url, future=True, json_serializer=json.dumps)
-    _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, class_=Session)
+    if _engine is None or _current_db_url != settings.database_url:
+        _engine = create_engine(settings.database_url, future=True, json_serializer=json.dumps)
+        _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, class_=Session)
+        _current_db_url = settings.database_url
+        _migrations_bootstrapped = False  # fresh DB → re-bootstrap
+    if _migrations_bootstrapped:
+        return
     _bootstrap_migrations(settings.database_url)
+    _migrations_bootstrapped = True
 
 
 def _bootstrap_migrations(database_url: str) -> None:

@@ -1,4 +1,25 @@
-"""All HTTP routes. Read-only except for /auth/* and /bots/{id}/{pause,enable}."""
+"""All HTTP routes.
+
+Two routers, three tiers:
+
+  public_router   no auth required, any GET safe for showcase
+                    /api/health, /api/auth/{status,login,logout},
+                    /api/account, /api/bots, /api/equity,
+                    /api/performance, /api/regime, /api/risk-caps
+
+  router          require_auth — operator tier, sees live state
+                    /api/positions, /api/bot-positions, /api/orders,
+                    /api/trades, /api/signals, /api/audit, plus all
+                    POST mutations (/api/bots/{id}/{pause,enable})
+
+The boundary is "show track records, hide playbooks." Aggregates +
+historical equity + per-bot policy go public; pre-execution signals,
+live positions, internal audit, and any mutation stay gated.
+
+Mutations are POST-only and live on the protected router by design —
+even though `auth_disabled()` would let them through if DASHBOARD_PASSWORD
+is unset, they shouldn't be used outside an authenticated session.
+"""
 from __future__ import annotations
 
 import logging
@@ -83,7 +104,7 @@ def logout(response: Response) -> dict:
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
-@router.get("/api/account", response_model=schemas.AccountResponse | None)
+@public_router.get("/api/account", response_model=schemas.AccountResponse | None)
 def account() -> schemas.AccountResponse | None:
     """Live account from Alpaca. Returns null if no creds or fetch fails."""
     settings = get_settings()
@@ -115,7 +136,7 @@ def account() -> schemas.AccountResponse | None:
         return None
 
 
-@router.get("/api/risk-caps", response_model=schemas.RiskCaps)
+@public_router.get("/api/risk-caps", response_model=schemas.RiskCaps)
 def risk_caps() -> schemas.RiskCaps:
     s = get_settings()
     return schemas.RiskCaps(
@@ -138,7 +159,7 @@ def _next_run_for(schedule: dict) -> datetime | None:
         return None
 
 
-@router.get("/api/bots", response_model=list[schemas.BotInfo])
+@public_router.get("/api/bots", response_model=list[schemas.BotInfo])
 def bots() -> list[schemas.BotInfo]:
     from src.core.orchestrator import load_enabled_bots
 
@@ -187,7 +208,7 @@ def bots() -> list[schemas.BotInfo]:
     return out
 
 
-@router.get("/api/regime", response_model=schemas.RegimeResponse)
+@public_router.get("/api/regime", response_model=schemas.RegimeResponse)
 def regime() -> schemas.RegimeResponse:
     from src.core.regime import detect
 
@@ -321,7 +342,7 @@ def signals(limit: int = 200) -> list[schemas.SignalRow]:
         ]
 
 
-@router.get("/api/equity", response_model=list[schemas.EquityPoint])
+@public_router.get("/api/equity", response_model=list[schemas.EquityPoint])
 def equity() -> list[schemas.EquityPoint]:
     init_db()
     with session_scope() as sess:
@@ -340,7 +361,7 @@ def equity() -> list[schemas.EquityPoint]:
         ]
 
 
-@router.get("/api/performance", response_model=list[schemas.PerformanceRow])
+@public_router.get("/api/performance", response_model=list[schemas.PerformanceRow])
 def performance() -> list[schemas.PerformanceRow]:
     """Per-bot risk-adjusted performance, computed from EquitySnapshot + Trade."""
     init_db()
