@@ -154,6 +154,8 @@ All three have `KeepAlive=true` (auto-restart on crash) and `RunAtLoad=true`
 | Path | Contents | Lifecycle |
 |---|---|---|
 | `~/Trading-bot/` | full app tree | rsync'd from laptop on `make mac-deploy` |
+| `~/Trading-bot/web/out/` | **production** static dashboard | served on `app.`/`bot.`/`67quant.com` |
+| `~/Trading-bot/web-preview/out/` | **preview** static dashboard | served on `preview.67quant.com`; populated by `make mac-deploy-preview`; promoted via server-side rsync (`make mac-promote`) |
 | `~/Trading-bot/data/trading.db` | SQLite DB | host volume; `data/` is excluded from rsync, never overwritten |
 | `~/Trading-bot/logs/{orchestrator,api,tunnel}.{out,err}.log` | launchd-captured stdout/err | append, host volume |
 | `~/Trading-bot/.env` | secrets | excluded from rsync; pushed once via `make mac-env-push` |
@@ -175,13 +177,16 @@ Per Phase 24 in [`docs/roadmap.md`](./docs/roadmap.md):
 
 | Hostname | Today | Target |
 |---|---|---|
-| `67quant.com` | (none — DNS only) | marketing landing |
-| `app.67quant.com` | full operator dashboard, password-gated | same |
+| `67quant.com` | landing page (`/welcome`) | marketing landing |
+| `app.67quant.com` | full operator dashboard; public-tier visible without auth | same |
 | `bot.67quant.com` | mirrors `app.` (placeholder) | public per-bot tear sheets, read-only |
+| `preview.67quant.com` | preview/staging dashboard | same — never promoted to prod |
 
-All three resolve to the same Cloudflare tunnel and the same uvicorn process
-on the Mac mini; FastAPI / Next.js will branch on the request `Host` header
-once the public UI ships. The ingress rules live in
+All four resolve to the same Cloudflare tunnel and the same uvicorn process
+on the Mac mini. FastAPI's SPA fallback host-routes `preview.67quant.com` to
+`web-preview/out/` and everything else to `web/out/`, so a preview deploy is
+purely additive — production is never modified by `make mac-deploy-preview`.
+The ingress rules live in
 [`deploy/cloudflared/config.yml.template`](./deploy/cloudflared/config.yml.template).
 
 ### Cloud (Fly.io)

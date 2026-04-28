@@ -34,16 +34,21 @@ credentials-file: /Users/jason/.cloudflared/__TUNNEL_UUID__.json
 # the dashboard.
 #
 # Phase 24 URL plan:
-#   app.67quant.com  full operator dashboard (auth-gated)
-#   bot.67quant.com  public per-bot tear sheets (read-only)  ← currently
-#                    serves the same app; flips to public-only when the
-#                    /public/bots/* UI ships
-#   67quant.com      marketing landing (future, may be a separate static site)
+#   app.67quant.com      full operator dashboard (auth-gated)
+#   bot.67quant.com      public per-bot tear sheets (read-only)  ← currently
+#                        serves the same app; flips to public-only when the
+#                        /public/bots/* UI ships
+#   67quant.com          marketing landing (future, may be a separate static site)
+#   preview.67quant.com  preview/staging — same uvicorn, different static tree
+#                        (web-preview/out/). FastAPI host-routes based on the
+#                        request Host header; see src/api/main.py.
 ingress:
   - hostname: 67quant.com
     service: http://localhost:8003
   - hostname: app.67quant.com
     service: http://localhost:8003
   - hostname: bot.67quant.com
+    service: http://localhost:8003
+  - hostname: preview.67quant.com
     service: http://localhost:8003
   - service: http_status:404

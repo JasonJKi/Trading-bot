@@ -116,7 +116,11 @@ defeat the purpose; a T+1 historical record is transparent without leaking
 edge.
 
 - [x] DNS + Cloudflare Tunnel ingress for `app.67quant.com` (alongside `bot.`)
-      — apex (`67quant.com`) added too, with `/` → `/welcome` redirect
+      — apex (`67quant.com`) added too; the landing page is served
+      directly at `/` (no apex-only redirect)
+- [x] `preview.67quant.com` — frontend-only preview/staging environment.
+      Same uvicorn + DB; FastAPI host-routes to `web-preview/out/`.
+      `make mac-deploy-preview` ships, `make mac-promote` flips to prod.
 - [x] `src/api/public_bot_routes.py` mounted at `/api/public/*`:
       `GET /api/public/bots`, `/api/public/bots/{id}`,
       `/api/public/bots/{id}/equity`, `/api/public/bots/{id}/trades`

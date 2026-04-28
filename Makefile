@@ -149,7 +149,8 @@ MAC_RSYNC_EXCLUDES := \
 	--exclude=.env \
 	--exclude=.env.local \
 	--exclude=data/ \
-	--exclude=logs/
+	--exclude=logs/ \
+	--exclude=web-preview/
 
 .PHONY: mac-bootstrap
 mac-bootstrap:  ## One-time: brew packages, app dir, venv, deps on $(MAC_HOST).
@@ -194,6 +195,32 @@ mac-services-uninstall:  ## Unload + remove LaunchAgents on $(MAC_HOST).
 .PHONY: mac-deploy
 mac-deploy: mac-rsync mac-services-install  ## Build + rsync + (re)install agents — full deploy.
 	@echo ">> deployed to $(MAC_HOST). check status with: make mac-status"
+
+# ---- preview / staging --------------------------------------------------
+# Frontend-only preview environment on the same Mac mini. The api process
+# host-routes preview.67quant.com → web-preview/out/ via src/api/main.py;
+# everything else (app./bot./apex) keeps serving from web/out/.
+#
+# Workflow:
+#   1. iterate locally → `make mac-deploy-preview` → check preview.67quant.com
+#   2. happy with it  → `make mac-promote`         → ships exact same bytes to prod
+# Promotion is server-side; no rebuild, no race, atomic from clients' POV.
+
+.PHONY: mac-deploy-preview
+mac-deploy-preview: mac-build  ## Build dashboard locally + rsync only to web-preview/ on $(MAC_HOST). No service restart.
+	rsync -avz --delete-after web/out/ $(MAC_HOST):$(MAC_APP_DIR)/web-preview/out/
+	@echo ">> preview live at https://preview.67quant.com (no service restart)"
+
+.PHONY: mac-promote
+mac-promote:  ## Atomically copy web-preview/out → web/out on $(MAC_HOST). Fast; no rebuild.
+	@ssh $(MAC_HOST) ' \
+		set -e; \
+		cd $(MAC_APP_DIR); \
+		test -d web-preview/out || (echo "no web-preview/out — run mac-deploy-preview first" >&2; exit 1); \
+		rsync -a --delete web-preview/out/ web/out/; \
+		echo "promoted: web-preview/out -> web/out"; \
+	'
+	@echo ">> promoted to https://app.67quant.com"
 
 .PHONY: mac-restart
 mac-restart:  ## Restart both agents on $(MAC_HOST) (no code change).

@@ -23,8 +23,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 
 from src.api.public_bot_routes import public_bot_router
 from src.api.research_routes import router as research_router
@@ -82,6 +81,11 @@ app.include_router(public_bot_router)
 # dev server on WEB_PORT serves the UI instead.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _STATIC_DIR = _REPO_ROOT / "web" / "out"
+# Preview tree, populated by `make mac-deploy-preview`. When a request comes in
+# on `preview.67quant.com` we serve from here instead of _STATIC_DIR — same
+# uvicorn process, same /api/*, just a different static frontend bundle.
+_PREVIEW_STATIC_DIR = _REPO_ROOT / "web-preview" / "out"
+_PREVIEW_HOST = "preview.67quant.com"
 
 
 def _maybe_mount_dashboard() -> None:
@@ -89,36 +93,53 @@ def _maybe_mount_dashboard() -> None:
         log.info("dashboard static dir not found at %s — dev mode", _STATIC_DIR)
         return
 
-    # Mount /_next first (StaticFiles for ETag/Range support on JS/CSS chunks).
-    next_assets = _STATIC_DIR / "_next"
-    if next_assets.is_dir():
-        app.mount("/_next", StaticFiles(directory=next_assets), name="next-static")
-
-    # Catch-all SPA fallback. Registered last so /api/* and /_next/* win first.
-    # response_model=None keeps FastAPI from trying to derive a Pydantic schema
-    # from the union return type — Response subclasses aren't Pydantic models.
+    # Catch-all SPA fallback. Registered last so /api/* wins first.
+    # response_model=None keeps FastAPI from deriving a Pydantic schema from
+    # the union return type — Response subclasses aren't Pydantic models.
+    #
+    # We deliberately handle /_next/* here too (no separate StaticFiles mount)
+    # so the preview hostname can serve a different bundle. Loses StaticFiles'
+    # ETag/Range support but Next's hashed-filename assets get a hard 1-year
+    # cache header below, and Cloudflare's edge caches them.
     @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
-    async def _spa_fallback(full_path: str, request: Request) -> FileResponse | RedirectResponse:
-        # Don't swallow unknown API paths — those should 404 as JSON, not HTML.
-        if full_path.startswith("api/") or full_path.startswith("_next/"):
+    async def _spa_fallback(full_path: str, request: Request) -> FileResponse:
+        # Unknown /api/* paths must 404 as JSON, not return HTML.
+        if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
-        # Apex (`67quant.com`) is the marketing surface — root request lands
-        # directly on /welcome instead of flashing the auth-gated dashboard.
-        # Any other path on apex falls through normally so deep links still work.
-        if full_path == "" and request.url.hostname == "67quant.com":
-            return RedirectResponse(url="/welcome", status_code=302)
-        # 1. Exact file in /web/out (favicon, robots.txt, /file.js, …).
-        candidate = _STATIC_DIR / full_path
+
+        # Host-route: preview.67quant.com → web-preview/out/, anything else
+        # → web/out/. Falls back to the prod tree if preview hasn't been
+        # populated yet (first deploy state).
+        host = (request.url.hostname or "").lower()
+        if host == _PREVIEW_HOST and _PREVIEW_STATIC_DIR.is_dir():
+            base = _PREVIEW_STATIC_DIR
+        else:
+            base = _STATIC_DIR
+
+        # 1. Exact file in the chosen tree (favicon, robots.txt, /_next/...).
+        candidate = base / full_path
         if candidate.is_file():
-            return FileResponse(candidate)
+            response = FileResponse(candidate)
+            # Next.js /_next/static/* uses content-hashed filenames; safe to
+            # cache forever at the browser + Cloudflare edge.
+            if full_path.startswith("_next/static/"):
+                response.headers["Cache-Control"] = (
+                    "public, max-age=31536000, immutable"
+                )
+            return response
         # 2. Trailing-slash export (Next writes /positions/ as /positions/index.html).
         as_dir = candidate / "index.html"
         if as_dir.is_file():
             return FileResponse(as_dir)
         # 3. SPA fallback — let the client router handle unknown routes.
-        return FileResponse(_STATIC_DIR / "index.html")
+        return FileResponse(base / "index.html")
 
-    log.info("dashboard mounted from %s", _STATIC_DIR)
+    log.info(
+        "dashboard mounted from %s (preview tree: %s, %s)",
+        _STATIC_DIR,
+        _PREVIEW_STATIC_DIR,
+        "present" if _PREVIEW_STATIC_DIR.is_dir() else "not yet populated",
+    )
 
 
 _maybe_mount_dashboard()

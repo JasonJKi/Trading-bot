@@ -65,10 +65,54 @@ targets; the server has no source-build toolchain.
 | Tail logs | `make mac-logs` | tails all four log streams (orchestrator + api stdout/err) in parallel |
 | Status | `make mac-status` | quick health glance — `state = running` per agent |
 | SSH in | `make mac-shell` | poke around manually |
+| Preview a change | `make mac-deploy-preview` | builds dashboard locally, rsyncs only to `web-preview/out/`. Visible at `https://preview.67quant.com`. **No service restart, prod untouched.** |
+| Promote preview | `make mac-promote` | server-side rsync `web-preview/out/` → `web/out/`. Atomic, no rebuild. Ships the exact bytes you saw on preview to `app./bot./67quant.com`. |
 
 Override the host on any target: `make mac-deploy MAC_HOST=mac` for the LAN
 path; the default is `mac-remote` (public SSH). Full setup including the
 named-tunnel upgrade flow is in [`deploy/README.md`](./deploy/README.md).
+
+### Preview / production split
+
+Frontend-only preview lives on the same Mac mini, same uvicorn process,
+different static tree:
+
+```
+~/Trading-bot/
+├── web/out/             ← serves app./bot./67quant.com  (production)
+└── web-preview/out/     ← serves preview.67quant.com    (preview)
+```
+
+`src/api/main.py`'s SPA fallback host-routes based on the request `Host:`
+header. There's no second uvicorn, no second orchestrator, no second
+tunnel — preview shares the same `/api/*` and the same DB, so you see
+real data while iterating on the UI.
+
+Iteration loop:
+
+```bash
+# 1. local edits → push to preview only
+make mac-deploy-preview                # https://preview.67quant.com
+
+# 2. happy with it → ship those exact bytes to production
+make mac-promote                       # https://app.67quant.com
+
+# (or back-out by deploying main fresh)
+make mac-deploy                        # rebuilds + ships from local web/out/
+```
+
+`make mac-rsync` (used by `mac-deploy`) excludes `web-preview/` so a prod
+deploy never clobbers an in-flight preview tree. Promotion is a server-
+side `rsync -a --delete` between the two trees — no rebuild, no race.
+
+**What this catches:** layout breakage, broken pages, fetch typos, brand
+visual regressions — everything frontend-only.
+
+**What this doesn't catch:** backend regressions. Both prod and preview
+share the same FastAPI process; a buggy backend deploy hits both. For
+backend changes, test locally first (`make run` or `make test`), then
+`mac-deploy`. Most observed breakage has been frontend, so this is the
+right cut today.
 
 ### Tunnel troubleshooting
 

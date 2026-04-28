@@ -45,6 +45,29 @@ make mac-status        # launchctl print-state
 make mac-shell         # SSH into the server (interactive)
 ```
 
+### Preview / production split
+
+Iterate on the UI without touching the live site. Frontend-only — same
+uvicorn, same DB, just a different static tree per hostname:
+
+```bash
+make mac-deploy-preview  # rsyncs build → ~/Trading-bot/web-preview/out/
+                         # visible at https://preview.67quant.com
+                         # no service restart, prod untouched
+
+make mac-promote         # server-side rsync web-preview/out → web/out
+                         # ships the exact preview bytes to app./bot./67quant.com
+                         # no rebuild, no race
+```
+
+`src/api/main.py` host-routes `preview.67quant.com` to `web-preview/out/`
+and everything else to `web/out/`. The Cloudflare Tunnel ingress in
+[`deploy/cloudflared/config.yml.template`](./cloudflared/config.yml.template)
+points all four hostnames at the same `localhost:8003`.
+
+See [`OPS.md`](../OPS.md#preview--production-split) for the full runbook
+and what this does / doesn't catch.
+
 The default host is `mac-remote` (the public SSH endpoint). Override on the
 command line if you're on the LAN and want the faster local path:
 
