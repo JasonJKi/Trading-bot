@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" fill="#0a0e14"/>
+  <!--
+    67quant favicon. Frozen wobble pose: left hand up, right hand down.
+    Composition (32 units wide):
+      digit 6   : x  1 .. 10
+      hands     : x 10 .. 22 (two 6-unit hands, each scaled from the 24-unit
+                  source viewBox in web/src/components/wordmark.tsx)
+      digit 7   : x 22 .. 31
+    Hand path data (4 finger rects + 1 palm rect) is preserved verbatim
+    from wordmark.tsx; the only changes are scale (24 -> 6) and translate.
+    See web/AGENTS.md (branding system / favicon) for design rationale.
+  -->
+  <text x="6" y="24" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="22" font-weight="700"
+        text-anchor="middle">6</text>
+  <!-- left hand: scaled 24→6 (factor 0.25), translated to (10, 11). Up-pose: -1px. -->
+  <g transform="translate(10 10) scale(0.25)" fill="#e6edf3">
+    <rect x="1.8"  y="5.5"  width="3.4" height="10"   rx="1.7"/>
+    <rect x="6.6"  y="3.2"  width="3.4" height="12.3" rx="1.7"/>
+    <rect x="11.6" y="2.5"  width="3.4" height="13"   rx="1.7"/>
+    <rect x="16.6" y="4"    width="3.4" height="11.5" rx="1.7"/>
+    <rect x="0.7"  y="13.5" width="22.6" height="9"   rx="4"/>
+  </g>
+  <!-- right hand: scaled 24→6, translated to (16, 12). Down-pose: +1px. -->
+  <g transform="translate(16 12) scale(0.25)" fill="#e6edf3">
+    <rect x="1.8"  y="5.5"  width="3.4" height="10"   rx="1.7"/>
+    <rect x="6.6"  y="3.2"  width="3.4" height="12.3" rx="1.7"/>
+    <rect x="11.6" y="2.5"  width="3.4" height="13"   rx="1.7"/>
+    <rect x="16.6" y="4"    width="3.4" height="11.5" rx="1.7"/>
+    <rect x="0.7"  y="13.5" width="22.6" height="9"   rx="4"/>
+  </g>
+  <text x="26" y="24" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="22" font-weight="700"
+        text-anchor="middle">7</text>
+</svg>

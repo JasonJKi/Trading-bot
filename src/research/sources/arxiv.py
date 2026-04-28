@@ -49,10 +49,14 @@ class ArxivAdapter(SourceAdapter):
             async with httpx.AsyncClient(
                 timeout=30, follow_redirects=True, headers=headers
             ) as c:
-                for attempt in range(3):
+                # arXiv's 429 cooldown can be 30s+. Three attempts at 5s/15s/30s
+                # covers the common case without delaying a real run too much.
+                backoffs = [5, 15, 30]
+                for attempt, delay in enumerate(backoffs):
                     r = await c.get(f"{ARXIV_API}?{_qs(params)}")
-                    if r.status_code == 429 and attempt < 2:
-                        await asyncio.sleep(3 * (attempt + 1))
+                    if r.status_code == 429 and attempt < len(backoffs) - 1:
+                        log.warning("arxiv: 429 — backing off %ds", delay)
+                        await asyncio.sleep(delay)
                         continue
                     r.raise_for_status()
                     rows = _parse_atom(r.text, source_id=self.id)

@@ -38,6 +38,14 @@ class Base(DeclarativeBase):
     pass
 
 
+# Default tenant id stamped on every row that doesn't specify one. Today the
+# system is single-tenant, but every tenant-scoped table carries this column
+# so that adding real auth + multi-tenancy later is a query-filter change,
+# not a schema migration. Shared/cache tables (CongressDisclosure, NewsItem,
+# ResearchDocument) intentionally do NOT carry user_id — they're global.
+DEFAULT_USER_ID = "demo"
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -46,6 +54,9 @@ class Trade(Base):
     __tablename__ = "trades"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     strategy_id: Mapped[str] = mapped_column(String(64), index=True)
     strategy_version: Mapped[str] = mapped_column(String(32), default="1")
@@ -62,6 +73,9 @@ class EquitySnapshot(Base):
     __tablename__ = "equity_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     strategy_id: Mapped[str] = mapped_column(String(64), index=True)
     cash: Mapped[float] = mapped_column(Float)
@@ -73,6 +87,9 @@ class Signal(Base):
     __tablename__ = "signals"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     strategy_id: Mapped[str] = mapped_column(String(64), index=True)
     strategy_version: Mapped[str] = mapped_column(String(32), default="1")
@@ -94,6 +111,9 @@ class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     strategy_id: Mapped[str] = mapped_column(String(64), index=True)
     strategy_version: Mapped[str] = mapped_column(String(32), default="1")
@@ -124,6 +144,9 @@ class BotPosition(Base):
     __tablename__ = "bot_positions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     strategy_id: Mapped[str] = mapped_column(String(64), index=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True)
     qty: Mapped[float] = mapped_column(Float, default=0.0)
@@ -148,6 +171,9 @@ class BotStatus(Base):
     __tablename__ = "bot_status"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     strategy_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     state: Mapped[str] = mapped_column(String(16), default="enabled")
     reason: Mapped[str] = mapped_column(String(256), default="")
@@ -165,6 +191,9 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     kind: Mapped[str] = mapped_column(String(48), index=True)
     strategy_id: Mapped[str] = mapped_column(String(64), default="", index=True)
@@ -229,6 +258,9 @@ class ResearchQuery(Base):
     __tablename__ = "research_queries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     topic: Mapped[str] = mapped_column(String(512))
@@ -280,6 +312,9 @@ class ResearchFinding(Base):
     __tablename__ = "research_findings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     query_id: Mapped[int] = mapped_column(Integer, index=True)
     category: Mapped[str] = mapped_column(String(32), index=True)
@@ -294,11 +329,93 @@ class ResearchFinding(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class StrategySpec(Base):
+    """A filled-in StrategyTemplate — the bridge between a research finding and a
+    deployed Strategy.
+
+    Lifecycle:  pending → backtested → approved → deployed → retired
+    (status field; transitions are append-only via AuditEvent).
+
+    `template_id` references the runtime template registry (templates live in
+    code, not DB — see src/templates/). `params`, `universe`, and `schedule`
+    must validate against the template's ParamSpec; the synthesis agent and
+    deterministic Python both check this.
+
+    `finding_id` is optional (manual specs are valid). `bot_id` is the
+    `Strategy.id` once promoted — null until then.
+    """
+
+    __tablename__ = "strategy_specs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    template_id: Mapped[str] = mapped_column(String(64), index=True)
+    template_version: Mapped[str] = mapped_column(String(32), default="1")
+
+    name: Mapped[str] = mapped_column(String(128))                  # human-friendly label
+    params: Mapped[dict] = mapped_column(JSON, default=dict)        # validated against ParamSpec
+    universe: Mapped[list] = mapped_column(JSON, default=list)
+    schedule: Mapped[dict] = mapped_column(JSON, default=dict)      # APScheduler cron fields
+
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    bot_id: Mapped[str] = mapped_column(String(64), default="", index=True)  # set on deploy
+
+    finding_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(32), default="manual")  # synthesis_agent | manual
+
+    error: Mapped[str] = mapped_column(String(1024), default="")
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class BacktestReport(Base):
+    """Result of evaluating a StrategySpec on historical data.
+
+    A spec can have multiple reports across history (e.g., when re-run with new
+    data, walk-forward variants, or after the spec's params change). The most
+    recent report by `created_at` is the canonical one for gating decisions.
+    """
+
+    __tablename__ = "backtest_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_USER_ID, server_default=DEFAULT_USER_ID, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    spec_id: Mapped[int] = mapped_column(Integer, index=True)
+
+    start_date: Mapped[datetime] = mapped_column(DateTime)
+    end_date: Mapped[datetime] = mapped_column(DateTime)
+    capital: Mapped[float] = mapped_column(Float, default=0.0)
+
+    total_return: Mapped[float] = mapped_column(Float, default=0.0)
+    cagr: Mapped[float] = mapped_column(Float, default=0.0)
+    sharpe: Mapped[float] = mapped_column(Float, default=0.0)
+    sortino: Mapped[float] = mapped_column(Float, default=0.0)
+    max_drawdown: Mapped[float] = mapped_column(Float, default=0.0)
+    win_rate: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Walk-forward fields (null if a single-period backtest)
+    median_oos_sharpe: Mapped[float] = mapped_column(Float, default=0.0)
+    overfit_gap: Mapped[float] = mapped_column(Float, default=0.0)
+
+    n_trades: Mapped[int] = mapped_column(Integer, default=0)
+    passed_gate: Mapped[int] = mapped_column(Integer, default=0)  # 0/1
+    gate_reason: Mapped[str] = mapped_column(String(256), default="")
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 Index("ix_trades_strategy_ts", Trade.strategy_id, Trade.ts)
 Index("ix_equity_strategy_ts", EquitySnapshot.strategy_id, EquitySnapshot.ts)
 Index("ix_orders_strategy_ts", Order.strategy_id, Order.ts)
 Index("ix_research_doc_query", ResearchDocument.query_id, ResearchDocument.fetched_at)
 Index("ix_research_finding_query", ResearchFinding.query_id, ResearchFinding.category)
+Index("ix_backtest_spec", BacktestReport.spec_id, BacktestReport.created_at)
 
 
 _engine = None
@@ -317,7 +434,42 @@ def init_db() -> None:
     _ensure_sqlite_dir(settings.database_url)
     _engine = create_engine(settings.database_url, future=True, json_serializer=json.dumps)
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, class_=Session)
-    Base.metadata.create_all(_engine)
+    _bootstrap_migrations(settings.database_url)
+
+
+def _bootstrap_migrations(database_url: str) -> None:
+    """Bring the schema up to head. Handles three database states uniformly:
+
+      1. Fresh DB                — alembic creates everything from zero.
+      2. Pre-alembic existing DB — stamp at the initial revision (the schema
+         already matches it), then upgrade applies any later migrations.
+      3. Already alembic-managed — upgrade applies any unapplied revisions.
+    """
+    from sqlalchemy import inspect as _inspect
+    from alembic import command
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    cfg = Config(str(repo_root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(repo_root / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", database_url)
+
+    insp = _inspect(_engine)
+    table_names = set(insp.get_table_names())
+    has_version = "alembic_version" in table_names
+    has_other_tables = bool(table_names - {"alembic_version"})
+
+    if has_other_tables and not has_version:
+        # Pre-alembic: tables exist but no version row. Stamp at the initial
+        # revision so we don't try to re-create existing tables on upgrade.
+        script = ScriptDirectory.from_config(cfg)
+        revisions = list(script.walk_revisions())  # head first, base last
+        if revisions:
+            initial = revisions[-1].revision
+            command.stamp(cfg, initial)
+
+    command.upgrade(cfg, "head")
 
 
 @contextmanager

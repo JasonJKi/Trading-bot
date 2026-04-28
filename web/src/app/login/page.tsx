@@ -3,6 +3,7 @@
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Wordmark } from "@/components/wordmark";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,13 +38,10 @@ export default function LoginPage() {
         onSubmit={onSubmit}
         className="w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-6"
       >
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded bg-[var(--color-accent)] flex items-center justify-center text-sm font-bold text-white">
-            tb
-          </div>
-          <div>
-            <div className="text-base font-semibold">Trading Bot</div>
-            <div className="text-xs text-[var(--color-text-muted)]">Sign in to continue</div>
+        <div className="flex items-end justify-between gap-3 mb-5">
+          <Wordmark size="md" />
+          <div className="text-xs text-[var(--color-text-muted)] pb-1">
+            Sign in to continue
           </div>
         </div>
         <label className="text-xs uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">

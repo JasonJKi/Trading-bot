@@ -17,7 +17,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (probe.error && (probe.error as { code?: number }).code === 401) {
-      router.replace("/login");
+      router.replace("/welcome");
     }
   }, [probe.error, router]);
 

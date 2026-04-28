@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!--
+    Default OG / Twitter card (1200x630). Near-black field.
+    Wordmark on the left, tagline below it. Frozen wobble pose.
+    Hand path data preserved verbatim from web/src/components/wordmark.tsx
+    (4 finger rects + 1 palm rect, 24-unit source viewBox); scaled 24 -> 144px.
+  -->
+  <rect width="1200" height="630" fill="#0a0e14"/>
+
+  <!-- thin top hairline divider, brand-token border -->
+  <rect x="0" y="0" width="1200" height="1" fill="#1f2731"/>
+
+  <!-- WORDMARK row, vertically centered around y=260 -->
+
+  <!-- digit 6 -->
+  <text x="100" y="320" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="240" font-weight="700"
+        letter-spacing="-6">6</text>
+
+  <!-- left hand (up-pose): scale 6, translate (260, 158) -->
+  <g transform="translate(260 152) scale(6)" fill="#e6edf3">
+    <rect x="1.8"  y="5.5"  width="3.4" height="10"   rx="1.7"/>
+    <rect x="6.6"  y="3.2"  width="3.4" height="12.3" rx="1.7"/>
+    <rect x="11.6" y="2.5"  width="3.4" height="13"   rx="1.7"/>
+    <rect x="16.6" y="4"    width="3.4" height="11.5" rx="1.7"/>
+    <rect x="0.7"  y="13.5" width="22.6" height="9"   rx="4"/>
+  </g>
+
+  <!-- right hand (down-pose): scale 6, translate (412, 178) -->
+  <g transform="translate(412 178) scale(6)" fill="#e6edf3">
+    <rect x="1.8"  y="5.5"  width="3.4" height="10"   rx="1.7"/>
+    <rect x="6.6"  y="3.2"  width="3.4" height="12.3" rx="1.7"/>
+    <rect x="11.6" y="2.5"  width="3.4" height="13"   rx="1.7"/>
+    <rect x="16.6" y="4"    width="3.4" height="11.5" rx="1.7"/>
+    <rect x="0.7"  y="13.5" width="22.6" height="9"   rx="4"/>
+  </g>
+
+  <!-- digit 7 -->
+  <text x="572" y="320" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="240" font-weight="700"
+        letter-spacing="-6">7</text>
+
+  <!-- tagline, below wordmark -->
+  <text x="100" y="420" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="44" font-weight="600"
+        letter-spacing="-1">Every alpha is 6-7.</text>
+
+  <!-- subline, deadpan technical -->
+  <text x="100" y="470" fill="#8b96a3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="22" font-weight="400">multi-strategy paper-first algorithmic trading</text>
+
+  <!-- bot color row, far below -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="16" font-weight="600" letter-spacing="2">
+    <text x="100" y="556" fill="#5a6573">LIVE BOTS</text>
+    <text x="220" y="556" fill="#4f8eff">MOMENTUM</text>
+    <text x="356" y="556" fill="#db6d28">MEAN_REVERSION</text>
+    <text x="568" y="556" fill="#3fb950">CONGRESS</text>
+    <text x="704" y="556" fill="#bc8cff">SENTIMENT</text>
+    <text x="848" y="556" fill="#f0b32c">XS_MOMENTUM</text>
+  </g>
+
+  <!-- url marker, bottom right, subtle -->
+  <text x="1100" y="556" fill="#5a6573"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="16" font-weight="500"
+        text-anchor="end">app.67quant.com</text>
+</svg>

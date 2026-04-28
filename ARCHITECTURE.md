@@ -27,9 +27,10 @@ where you start.
 │             updates BotPosition ledger                      │
 │             writes AuditEvents                              │
 │                                                             │
-│  dashboard/app.py (Streamlit on :8080)                      │
+│  src/api/main.py (FastAPI on :8000)                         │
 │      Pure reader. Reads SQLite + makes read-only Alpaca     │
 │      calls. Never moves money. Password-gated.              │
+│      In prod: also serves the Next.js static export at /.   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -116,18 +117,78 @@ Channels: console (always), Slack, Discord, email (SMTP). Configure via env.
 make install     # editable install with all extras
 make test        # 34 tests, no network needed
 make run-once    # run every enabled bot once and exit
-make run         # long-running scheduler
-make dashboard   # streamlit on :8501
+make run         # full stack: worker + FastAPI + Next.js dev server
 
 # Docker (one command):
-make up          # SQLite by default
+make up          # SQLite by default — dashboard at http://localhost:8000
 make up-pg       # add Postgres profile
 ```
 
-## Production (Fly.io)
+## Deployment topology
 
-The same image runs on Fly. See `fly.toml` and `scripts/run.sh`. Both worker
-and dashboard run as one process on one machine, sharing the volume.
+The same code runs on three deployment targets, with increasing operational
+rigor:
+
+| Target | Process layout | Public URL | Use |
+|---|---|---|---|
+| Local / docker compose | one host, no tunnel | `http://localhost:8000` | development |
+| Fly.io | one machine, one volume (`scripts/run.sh`) | `*.fly.dev` | demo / cloud |
+| Mac mini (primary) | three `launchd` agents + Cloudflare named tunnel | `app.67quant.com`, `bot.67quant.com` | always-on home server |
+
+### Mac mini layout
+
+Three independent LaunchAgents under `~/Library/LaunchAgents/`. Templates
+live in [`deploy/launchd/`](./deploy/launchd/) with `__APP_DIR__` /
+`__API_PORT__` / `__HOME__` placeholders rendered by
+[`deploy/services-install.sh`](./deploy/services-install.sh).
+
+| Label | What it runs | Purpose |
+|---|---|---|
+| `com.tradingbot.orchestrator` | `python -m src.core.orchestrator` | trading scheduler, all bots, reconciler |
+| `com.tradingbot.api` | `uvicorn src.api.main:app` (loopback) | FastAPI backend; also serves the Next.js static export |
+| `com.tradingbot.tunnel` | `cloudflared tunnel run` (named tunnel `trading-bot`) | brings public traffic in via Cloudflare |
+
+All three have `KeepAlive=true` (auto-restart on crash) and `RunAtLoad=true`
+(start at login). Server-side state:
+
+| Path | Contents | Lifecycle |
+|---|---|---|
+| `~/Trading-bot/` | full app tree | rsync'd from laptop on `make mac-deploy` |
+| `~/Trading-bot/data/trading.db` | SQLite DB | host volume; `data/` is excluded from rsync, never overwritten |
+| `~/Trading-bot/logs/{orchestrator,api,tunnel}.{out,err}.log` | launchd-captured stdout/err | append, host volume |
+| `~/Trading-bot/.env` | secrets | excluded from rsync; pushed once via `make mac-env-push` |
+| `~/.cloudflared/{cert.pem,<uuid>.json,config.yml}` | tunnel credentials + ingress | scp'd via `make mac-tunnel-creds-push`; tracked as a template at [`deploy/cloudflared/config.yml.template`](./deploy/cloudflared/config.yml.template) |
+
+The dashboard build happens on the laptop (`NEXT_BUILD_MODE=export npm run
+build` → `web/out/`); only the artifact ships. The server has no Node
+toolchain, no editable Python install, and no source build hooks — Python
+deps are pinned in [`deploy/requirements.txt`](./deploy/requirements.txt) and
+installed as a "simple declared-dependency install."
+
+The full workflow (one-time setup, day-to-day, named-tunnel upgrade) lives in
+[`deploy/README.md`](./deploy/README.md). Runbook commands are in
+[`OPS.md`](./OPS.md).
+
+### URL layout
+
+Per Phase 24 in [`docs/roadmap.md`](./docs/roadmap.md):
+
+| Hostname | Today | Target |
+|---|---|---|
+| `67quant.com` | (none — DNS only) | marketing landing |
+| `app.67quant.com` | full operator dashboard, password-gated | same |
+| `bot.67quant.com` | mirrors `app.` (placeholder) | public per-bot tear sheets, read-only |
+
+All three resolve to the same Cloudflare tunnel and the same uvicorn process
+on the Mac mini; FastAPI / Next.js will branch on the request `Host` header
+once the public UI ships. The ingress rules live in
+[`deploy/cloudflared/config.yml.template`](./deploy/cloudflared/config.yml.template).
+
+### Cloud (Fly.io)
+
+The same image still runs on Fly for cloud demos. See `fly.toml` and
+`scripts/run.sh`. The worker (orchestrator + reconciler) and the FastAPI
+backend share one host and one SQLite volume.
 
 ```
 make fly-deploy

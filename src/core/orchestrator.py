@@ -13,7 +13,16 @@ Order pipeline (v2):
 This separates "intent" (Order) from "fill" (Trade) so partial fills, rejects,
 and crashes mid-submit are all observable.
 """
+# Populate os.environ from .env BEFORE any module reads it. pydantic-settings
+# loads .env into Settings on its own, but a few modules (auth.py, alerts)
+# read os.environ directly — under launchd the plist only injects PATH +
+# PYTHONUNBUFFERED, so those reads otherwise come back empty.
+# ruff: noqa: E402
 from __future__ import annotations
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import argparse
 import logging
@@ -82,6 +91,8 @@ class Orchestrator:
         self.bots: list[Strategy] = []
 
     def setup(self) -> None:
+        # Fail loud on misconfiguration before we touch the broker or DB.
+        self.settings.validate_for_runtime()
         init_db()
         self.bots = load_enabled_bots(self.settings)
         # In live mode, refuse to start unless every bot has been paper-validated.

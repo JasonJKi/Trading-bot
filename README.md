@@ -6,9 +6,15 @@ Runs several strategies side by side (Momentum, Mean Reversion, Congress
 Copycat, News/Sentiment) on a single Alpaca paper account so you can see
 which ones survive periods of high volatility before risking real money.
 
-For the full operating manual see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
-For ops procedures (backups, secrets, DR) see [`OPS.md`](./OPS.md).
-To wire up a new data source see [`docs/data-sources.md`](./docs/data-sources.md).
+For the full doc set (overview, system design, roadmap, audit) start at
+[`docs/`](./docs/README.md). Quick links:
+- [`docs/overview.md`](./docs/overview.md) — what this is, in 5 minutes
+- [`docs/system-architecture.md`](./docs/system-architecture.md) — north-star design
+- [`docs/production-baseline.md`](./docs/production-baseline.md) — engineering bar + current audit
+- [`docs/roadmap.md`](./docs/roadmap.md) — what's being built next
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — how the running system works today
+- [`OPS.md`](./OPS.md) — runbook (backups, secrets, DR)
+- [`docs/data-sources.md`](./docs/data-sources.md) — adding a new data source
 
 ## What's in here
 
@@ -53,7 +59,7 @@ make run                # full stack: worker + api + dashboard
 Or via docker-compose (one command):
 
 ```bash
-make up           # SQLite, single container, dashboard on :8080
+make up           # SQLite, single container, dashboard on :8000
 make up-pg        # adds Postgres profile for a real DB
 ```
 

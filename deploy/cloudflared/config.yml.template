@@ -40,6 +40,8 @@ credentials-file: /Users/jason/.cloudflared/__TUNNEL_UUID__.json
 #                    /public/bots/* UI ships
 #   67quant.com      marketing landing (future, may be a separate static site)
 ingress:
+  - hostname: 67quant.com
+    service: http://localhost:8003
   - hostname: app.67quant.com
     service: http://localhost:8003
   - hostname: bot.67quant.com

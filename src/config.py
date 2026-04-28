@@ -112,6 +112,59 @@ class Settings(BaseSettings):
                 f"to {LIVE_CONFIRM_TOKEN!r}. This guard prevents accidental real-money trading."
             )
 
+    def _has_any_alert_channel(self) -> bool:
+        if self.slack_webhook_url:
+            return True
+        if self.discord_webhook_url:
+            return True
+        if (
+            self.alert_email_to
+            and self.smtp_host
+            and self.smtp_user
+            and self.smtp_password
+        ):
+            return True
+        return False
+
+    def validate_for_runtime(self) -> None:
+        """Fail loud at startup on configuration that would silently misbehave.
+
+        Called from every entry point that brings up a real process
+        (orchestrator, API, deploy release_command). Admin CLI commands like
+        `status`, `pause`, `enable` skip this intentionally — those must work
+        even in a partially-configured environment.
+
+        Always:
+          - DATABASE_URL must be non-empty.
+
+        In live mode additionally:
+          - The live-confirm token must be set (delegates to assert_safe_to_trade).
+          - Alpaca creds must both be set.
+          - At least one alert channel must be wired. Silent failures during
+            live trading are unacceptable.
+        """
+        if not self.database_url:
+            raise RuntimeError("Refusing to start: DATABASE_URL is empty.")
+
+        if not self.is_live:
+            return
+
+        self.assert_safe_to_trade()
+
+        if not (self.alpaca_api_key and self.alpaca_api_secret):
+            raise RuntimeError(
+                "Refusing to start in live mode: ALPACA_API_KEY and "
+                "ALPACA_API_SECRET must both be set."
+            )
+
+        if not self._has_any_alert_channel():
+            raise RuntimeError(
+                "Refusing to start in live mode: no alert channel is configured. "
+                "Set at least one of SLACK_WEBHOOK_URL, DISCORD_WEBHOOK_URL, or "
+                "(ALERT_EMAIL_TO + SMTP_HOST + SMTP_USER + SMTP_PASSWORD). "
+                "Live trading without alerts is not safe."
+            )
+
 
 _settings: Settings | None = None
 

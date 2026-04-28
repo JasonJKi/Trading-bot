@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <!--
+    Apple touch icon (180x180). Near-black field with the wordmark centered.
+    Frozen wobble pose: left hand up, right hand down.
+    Hand path data preserved verbatim from web/src/components/wordmark.tsx;
+    the only changes are scale (viewBox 24 -> 36 px each) and translate.
+  -->
+  <rect width="180" height="180" fill="#0a0e14"/>
+
+  <!-- digit 6 -->
+  <text x="42" y="118" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="96" font-weight="700"
+        text-anchor="middle"
+        letter-spacing="-2">6</text>
+
+  <!-- left hand: 24-unit source -> 36px wide, translate to (66, 64). Up-pose: -4px. -->
+  <g transform="translate(66 60) scale(1.5)" fill="#e6edf3">
+    <rect x="1.8"  y="5.5"  width="3.4" height="10"   rx="1.7"/>
+    <rect x="6.6"  y="3.2"  width="3.4" height="12.3" rx="1.7"/>
+    <rect x="11.6" y="2.5"  width="3.4" height="13"   rx="1.7"/>
+    <rect x="16.6" y="4"    width="3.4" height="11.5" rx="1.7"/>
+    <rect x="0.7"  y="13.5" width="22.6" height="9"   rx="4"/>
+  </g>
+
+  <!-- right hand: same scale, translate to (104, 72). Down-pose: +4px. -->
+  <g transform="translate(104 68) scale(1.5)" fill="#e6edf3">
+    <rect x="1.8"  y="5.5"  width="3.4" height="10"   rx="1.7"/>
+    <rect x="6.6"  y="3.2"  width="3.4" height="12.3" rx="1.7"/>
+    <rect x="11.6" y="2.5"  width="3.4" height="13"   rx="1.7"/>
+    <rect x="16.6" y="4"    width="3.4" height="11.5" rx="1.7"/>
+    <rect x="0.7"  y="13.5" width="22.6" height="9"   rx="4"/>
+  </g>
+
+  <!-- digit 7 -->
+  <text x="146" y="118" fill="#e6edf3"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="96" font-weight="700"
+        text-anchor="middle"
+        letter-spacing="-2">7</text>
+</svg>

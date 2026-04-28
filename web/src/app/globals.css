@@ -58,3 +58,21 @@ html, body {
   border: 1px solid var(--color-border-strong) !important;
   border-radius: 8px !important;
 }
+
+/* Wordmark wobble — the alternating-palms gesture, scaled to element size.
+   Amplitude is a percentage of the element's own height, so the same
+   keyframes work at favicon size and hero size.
+   See web/AGENTS.md (branding system) for rules of use. */
+@keyframes wobble-up {
+  0%, 100% { transform: translateY(-12%); }
+  50%      { transform: translateY( 12%); }
+}
+@keyframes wobble-down {
+  0%, 100% { transform: translateY( 12%); }
+  50%      { transform: translateY(-12%); }
+}
+.wobble-up   { animation: wobble-up   1.6s ease-in-out infinite; }
+.wobble-down { animation: wobble-down 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .wobble-up, .wobble-down { animation: none; }
+}

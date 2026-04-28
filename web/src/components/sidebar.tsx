@@ -12,6 +12,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Wordmark } from "@/components/wordmark";
 
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
@@ -27,15 +28,15 @@ export function Sidebar() {
   const path = usePathname();
   return (
     <aside className="w-56 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-5 hidden md:block">
-      <Link href="/" className="flex items-center gap-2 px-2 mb-6">
-        <div className="w-7 h-7 rounded bg-[var(--color-accent)] flex items-center justify-center text-xs font-bold text-white">
-          tb
-        </div>
-        <div>
-          <div className="text-sm font-semibold tracking-tight">Trading Bot</div>
-          <div className="text-[10px] text-[var(--color-text-subtle)] uppercase tracking-wider">
-            multi-strategy
-          </div>
+      <Link
+        href="/"
+        className="flex items-center gap-2 px-2 mb-6 text-[var(--color-text)]"
+      >
+        <Wordmark size="sm" />
+        <div className="text-[10px] text-[var(--color-text-subtle)] uppercase tracking-wider leading-tight">
+          quant
+          <br />
+          multi-strategy
         </div>
       </Link>
       <nav className="flex flex-col gap-0.5">

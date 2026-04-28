@@ -58,6 +58,8 @@ WORKDIR /app
 
 COPY --from=py-builder /opt/venv /opt/venv
 COPY --chown=app:app src ./src
+COPY --chown=app:app alembic ./alembic
+COPY --chown=app:app alembic.ini ./alembic.ini
 COPY --from=web-builder --chown=app:app /web/out ./web/out
 
 RUN mkdir -p /app/data && chown -R app:app /app

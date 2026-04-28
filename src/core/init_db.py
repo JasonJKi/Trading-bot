@@ -12,10 +12,12 @@ from src.core.store import init_db
 
 
 def main() -> None:
-    logging.basicConfig(level=get_settings().log_level)
+    settings = get_settings()
+    logging.basicConfig(level=settings.log_level)
     log = logging.getLogger(__name__)
+    settings.validate_for_runtime()
     init_db()
-    log.info("schema ready at %s", get_settings().database_url)
+    log.info("schema ready at %s", settings.database_url)
 
 
 if __name__ == "__main__":

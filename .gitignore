@@ -25,3 +25,4 @@ htmlcov/
 *.log
 logs/
 *.ipynb_checkpoints
+.claude/

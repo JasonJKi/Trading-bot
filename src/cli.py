@@ -141,18 +141,6 @@ def optimize(strategy: str, start: str, end: str, trials: int, train_days: int, 
 
 
 @main.command()
-def dashboard() -> None:  # pragma: no cover
-    """Launch the Streamlit dashboard locally."""
-    import subprocess
-    import sys
-
-    subprocess.run(
-        [sys.executable, "-m", "streamlit", "run", "dashboard/app.py"],
-        check=False,
-    )
-
-
-@main.command()
 @click.option("--strategy", required=True, help="Bot id, e.g. momentum")
 def graduate(strategy: str) -> None:  # pragma: no cover
     """Mark a bot as paper-validated. Refuses if metrics don't meet the gate."""
@@ -188,6 +176,67 @@ def enable(strategy: str) -> None:  # pragma: no cover
 
     enable_bot(strategy)
     click.echo(f"enabled {strategy}")
+
+
+@main.group()
+def templates() -> None:  # pragma: no cover
+    """Inspect the strategy template library — the slot-fill catalog used by
+    the synthesis agent to produce StrategySpec rows from research findings."""
+
+
+@templates.command("list")
+def templates_list() -> None:  # pragma: no cover
+    """List every registered StrategyTemplate."""
+    from src.templates import all_registered
+
+    for tid, cls in sorted(all_registered().items()):
+        click.echo(
+            f"  {tid:24s}  v{cls.version:4s}  {cls.category:14s}  {cls.name}"
+        )
+
+
+@templates.command("show")
+@click.argument("template_id")
+def templates_show(template_id: str) -> None:  # pragma: no cover
+    """Pretty-print a single template's parameter schema."""
+    import json
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from src.templates import TemplateRegistryError, get_template
+
+    try:
+        cls = get_template(template_id)
+    except TemplateRegistryError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(1)
+
+    c = Console()
+    c.print(Panel.fit(
+        f"[bold]{cls.name}[/bold]\nid={cls.id}  v{cls.version}  category={cls.category}  "
+        f"asset_classes={cls.asset_classes}",
+        title="template",
+    ))
+    c.print(Panel(Markdown(cls.description), title="description"))
+
+    t = Table(title="parameters")
+    t.add_column("name")
+    t.add_column("kind")
+    t.add_column("default")
+    t.add_column("range / choices")
+    t.add_column("description", overflow="fold")
+    for p in cls.param_specs():
+        rng = ""
+        if p.kind in ("int", "float"):
+            rng = f"[{p.low}, {p.high}]"
+        elif p.kind == "choice":
+            rng = ", ".join(str(x) for x in p.choices)
+        t.add_row(p.name, p.kind, str(p.default), rng, p.description)
+    c.print(t)
+    c.print(f"[dim]default schedule: {json.dumps(cls.default_schedule())}[/dim]")
+    c.print(f"[dim]default universe: {cls.default_universe()}[/dim]")
 
 
 @main.group()

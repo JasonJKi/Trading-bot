@@ -7,15 +7,17 @@ from functools import lru_cache
 from typing import Annotated
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import desc, func, select
 
 from src.api import schemas
 from src.api.auth import (
     auth_disabled,
+    check_login_rate_limit,
     clear_cookie,
     issue_cookie,
     require_auth,
+    reset_login_rate_limit,
     verify_password,
 )
 from src.config import get_settings
@@ -55,9 +57,18 @@ def auth_status() -> dict:
 
 
 @public_router.post("/api/auth/login", response_model=schemas.LoginResponse)
-def login(body: schemas.LoginRequest, response: Response) -> schemas.LoginResponse:
+def login(
+    body: schemas.LoginRequest, request: Request, response: Response
+) -> schemas.LoginResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_login_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="too many attempts, try again later",
+        )
     if not verify_password(body.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="bad password")
+    reset_login_rate_limit(client_ip)
     issue_cookie(response)
     return schemas.LoginResponse(ok=True)
 

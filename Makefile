@@ -57,8 +57,25 @@ backtest:  ## Backtest a strategy. Usage: make backtest STRAT=momentum START=202
 	$(PY) -m src.backtest.runner --strategy $(STRAT) --start $(START) --end $(END)
 
 .PHONY: db-init
-db-init:  ## Initialize the SQLite schema.
+db-init:  ## Bootstrap the schema (fresh / pre-alembic / managed — handles all three).
 	$(PY) -m src.core.init_db
+
+.PHONY: db-upgrade
+db-upgrade:  ## Apply all pending Alembic migrations.
+	$(PY) -m alembic upgrade head
+
+.PHONY: db-current
+db-current:  ## Show the current DB revision.
+	$(PY) -m alembic current
+
+.PHONY: db-history
+db-history:  ## Show migration history (newest first; current is marked).
+	$(PY) -m alembic history --indicate-current
+
+.PHONY: db-revision
+db-revision:  ## Autogenerate a new revision. Usage: make db-revision MSG="add foo"
+	@test -n "$(MSG)" || (echo "MSG is required: make db-revision MSG=\"...\"" >&2; exit 1)
+	$(PY) -m alembic revision --autogenerate -m "$(MSG)"
 
 .PHONY: db-backup
 db-backup:  ## Snapshot the SQLite DB (online, gzipped) to data/backup/.

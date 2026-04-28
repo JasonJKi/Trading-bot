@@ -13,6 +13,74 @@ What to do when, in plain language. For the architectural picture see
 | Weekly | Backup integrity | `ls -lh data/backup/` then `gunzip -t data/backup/<latest>.gz` |
 | Monthly | Secrets rotation | Regenerate Alpaca keys, rotate `DASHBOARD_PASSWORD`, update Fly secrets |
 
+## Migrations
+
+Schema changes ship as Alembic revisions. Workflow:
+
+```bash
+# 1. Edit a SQLAlchemy model in src/core/store.py.
+# 2. Autogenerate a revision (review the diff before committing).
+make db-revision MSG="add foo column to bar"
+# → writes alembic/versions/<date>-<id>_add_foo_column_to_bar.py
+
+# 3. Inspect the generated file. Edit if autogenerate missed something
+#    (data migrations, constraint subtleties, etc.).
+
+# 4. Apply locally to confirm.
+make db-upgrade
+make db-current   # should show the new revision id
+```
+
+In production, `make db-init` (which the Fly `release_command` runs and
+which the launchd agents on the Mac mini call before bringing up the
+worker) is the canonical bootstrap. It handles three database states:
+
+- **Fresh DB** — alembic creates everything from zero.
+- **Pre-alembic existing DB** — stamps at the initial revision (the
+  schema already matches it), then runs any later migrations.
+- **Already alembic-managed** — applies any unapplied revisions.
+
+The pre-alembic path is a one-shot safety net for the existing Mac mini
+deploy. After the first `db-init` post-upgrade, the DB is alembic-managed
+and the path collapses to a normal upgrade.
+
+Never edit migrations that have shipped — write a new revision. Never
+edit `alembic_version` by hand unless you really know why.
+
+## Deploying to the Mac mini
+
+The Mac mini server runs three launchd agents (orchestrator + api +
+cloudflared tunnel) — see [`ARCHITECTURE.md`](./ARCHITECTURE.md#mac-mini-layout)
+for the process layout. Deploys are laptop-driven via the `mac-*` Make
+targets; the server has no source-build toolchain.
+
+| Step | Command | When |
+|---|---|---|
+| Bootstrap | `make mac-bootstrap` | once per server (installs `python@3.12`, `cloudflared`, creates venv, installs runtime deps from `deploy/requirements.txt`) |
+| Push secrets | `make mac-env-push` | once + whenever `.env` changes (never auto-deployed) |
+| Push tunnel creds | `make mac-tunnel-creds-push` | once after `cloudflared tunnel create` |
+| Full deploy | `make mac-deploy` | every code change. Builds the dashboard locally, rsyncs source + prebuilt `web/out/`, regenerates and reloads launchd plists. |
+| Restart only | `make mac-restart` | when you edited config on the server (e.g. `.env`) but no code changed |
+| Stop both | `make mac-stop` | maintenance windows |
+| Tail logs | `make mac-logs` | tails all four log streams (orchestrator + api stdout/err) in parallel |
+| Status | `make mac-status` | quick health glance — `state = running` per agent |
+| SSH in | `make mac-shell` | poke around manually |
+
+Override the host on any target: `make mac-deploy MAC_HOST=mac` for the LAN
+path; the default is `mac-remote` (public SSH). Full setup including the
+named-tunnel upgrade flow is in [`deploy/README.md`](./deploy/README.md).
+
+### Tunnel troubleshooting
+
+| Symptom | First place to look |
+|---|---|
+| `502` from `https://app.67quant.com` | tunnel agent restarting — wait 5s; if persistent, `make mac-restart` |
+| TLS handshake failure (`ssl/tls alert handshake failure`) | Cloudflare zone SSL/TLS mode is `Off` — set to `Full` in dashboard → SSL/TLS → Overview |
+| Universal SSL `Authorizing` | brand-new subdomain, give it 5–15 min to issue |
+| `Bootstrap failed: 5: Input/output error` from `services-install.sh` | known launchctl bootout/bootstrap race; the script already retries — re-run `make mac-services-install` and confirm with `make mac-status` |
+| Tunnel agent up but URL `404` | hostname not in `~/.cloudflared/config.yml` ingress — edit [`deploy/cloudflared/config.yml.template`](./deploy/cloudflared/config.yml.template), scp the rendered config, `make mac-restart` |
+| `cert.pem: file does not exist` on server | run `make mac-tunnel-creds-push` |
+
 ## Backups
 
 - The orchestrator runs an automatic SQLite backup at **04:00 UTC daily**
@@ -43,6 +111,7 @@ curl -fsS http://localhost:8081/healthz
 |---|---|---|
 | `ALPACA_API_KEY` / `ALPACA_API_SECRET` | `.env` (local) or Fly secrets | Quarterly. Generate new pair in the Alpaca dashboard, redeploy, revoke old. |
 | `DASHBOARD_PASSWORD` | `.env` or Fly secrets | Whenever someone leaves your trust circle. |
+| `SESSION_SECRET` | `.env` or Fly secrets | Rotating it logs every dashboard user out. Generate with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Required for multi-worker deploys. |
 | `SLACK_WEBHOOK_URL` / `DISCORD_WEBHOOK_URL` | `.env` or Fly secrets | If a webhook URL leaks, revoke it in Slack/Discord, set a new one. |
 | `SMTP_PASSWORD` | `.env` or Fly secrets | If your email provider rotates app passwords, update here. |
 
@@ -82,6 +151,15 @@ docker compose logs -f worker
 
 # Tail logs (Fly)
 make fly-logs
+
+# Deploy a code change to the Mac mini
+make mac-deploy
+
+# Tail orchestrator + api + tunnel logs on the Mac mini
+make mac-logs
+
+# Reload agents on the Mac mini after editing .env on the server
+make mac-restart
 ```
 
 ## Disaster recovery
