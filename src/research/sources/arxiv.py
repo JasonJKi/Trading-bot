@@ -5,6 +5,7 @@ left to the web-fetcher if the synthesizer wants them.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
@@ -15,7 +16,7 @@ from src.research.sources.base import DocumentRow, SourceAdapter, register
 
 log = logging.getLogger(__name__)
 
-ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_API = "https://export.arxiv.org/api/query"
 
 # Categories most relevant to AI trading bot research.
 RELEVANT_CATS = ["q-fin.TR", "q-fin.PM", "q-fin.CP", "q-fin.ST", "cs.LG", "stat.ML"]
@@ -40,12 +41,22 @@ class ArxivAdapter(SourceAdapter):
             "sortBy": "relevance",
             "sortOrder": "descending",
         }
+        # arXiv asks API consumers to identify themselves via User-Agent and
+        # rate-limit to ~1 req per 3s. We retry on 429 with exponential backoff.
+        headers = {"User-Agent": "trading-bot-research/0.1 (https://github.com)"}
         rows: list[DocumentRow] = []
         try:
-            async with httpx.AsyncClient(timeout=20) as c:
-                r = await c.get(f"{ARXIV_API}?{_qs(params)}")
-                r.raise_for_status()
-                rows = _parse_atom(r.text, source_id=self.id)
+            async with httpx.AsyncClient(
+                timeout=30, follow_redirects=True, headers=headers
+            ) as c:
+                for attempt in range(3):
+                    r = await c.get(f"{ARXIV_API}?{_qs(params)}")
+                    if r.status_code == 429 and attempt < 2:
+                        await asyncio.sleep(3 * (attempt + 1))
+                        continue
+                    r.raise_for_status()
+                    rows = _parse_atom(r.text, source_id=self.id)
+                    break
         except Exception:
             log.exception("arxiv: search failed")
         log.info("arxiv: %d docs for query=%r", len(rows), query)

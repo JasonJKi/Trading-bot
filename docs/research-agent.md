@@ -101,7 +101,7 @@ producing pre-cleaned `DocumentRow` objects ready for the synthesizer.
 
 | Adapter | Module | Auth | Cost | Notes |
 |---|---|---|---|---|
-| `reddit` | `sources/reddit.py` | client_id + secret | free | Multi-sub search via async PRAW; pulls top-level comments. |
+| `reddit` | `sources/reddit.py` | client_id + secret **OR** Tavily | free | Two backends: async PRAW (richer — pulls comment trees) when Reddit creds are set, otherwise Tavily restricted to reddit.com. Reddit API got hard to obtain after 2023; the Tavily fallback means you don't need it. |
 | `youtube` | `sources/youtube.py` | none (or YT Data key) | free | yt-dlp search → youtube-transcript-api. Skips videos with no captions. |
 | `hackernews` | `sources/hackernews.py` | none | free | Algolia HN search + top comment thread. |
 | `arxiv` | `sources/arxiv.py` | none | free | Filtered to q-fin.* + cs.LG + stat.ML categories. |

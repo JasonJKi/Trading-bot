@@ -38,14 +38,19 @@ def temp_db(monkeypatch):
 
 @pytest.fixture
 def no_creds(monkeypatch):
-    """Strip every credential the research adapters care about."""
+    """Strip every credential the research adapters care about.
+
+    Note: monkeypatch.delenv only clears os.environ; pydantic-settings will
+    still happily re-read values from the .env file in the repo. We overwrite
+    with empty strings via setenv to force the override.
+    """
     for var in [
         "REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET",
         "TAVILY_API_KEY", "GITHUB_TOKEN",
         "APIFY_TOKEN", "YOUTUBE_API_KEY",
         "GEMINI_API_KEY", "LOGFIRE_TOKEN",
     ]:
-        monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv(var, "")
     from src import config
     config._settings = None
     yield
@@ -62,6 +67,24 @@ def test_reddit_no_creds_returns_empty(no_creds):
     a = RedditAdapter()
     assert a.is_available() is False
     assert _run(a.search("anything")) == []
+
+
+def test_reddit_falls_back_to_tavily_when_praw_creds_missing(monkeypatch, no_creds):
+    """If Tavily is set but PRAW isn't, the Reddit adapter should still report
+    available and route searches through the Tavily fallback path.
+
+    We don't actually call Tavily — just verify that is_available() flips True
+    and that _has_praw() correctly reports False so search() takes the Tavily
+    branch.
+    """
+    monkeypatch.setenv("TAVILY_API_KEY", "fake-tavily-key")
+    from src import config
+    config._settings = None
+
+    from src.research.sources.reddit import RedditAdapter
+    a = RedditAdapter()
+    assert a.is_available() is True
+    assert a._has_praw() is False
 
 
 def test_web_no_creds_returns_empty(no_creds):

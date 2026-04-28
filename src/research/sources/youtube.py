@@ -148,12 +148,24 @@ class YouTubeAdapter(SourceAdapter):
 
     @staticmethod
     def _transcript(video_id: str) -> str:
+        """Pull the English transcript for `video_id`. Returns "" on any failure
+        (no transcript, captions disabled, region-blocked, etc.).
+
+        youtube-transcript-api 1.x changed the API: the old classmethod
+        `YouTubeTranscriptApi.get_transcript(...)` was replaced by an instance
+        method `YouTubeTranscriptApi().fetch(...)` returning a FetchedTranscript
+        whose snippets each have a `.text` attribute.
+        """
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
         except ImportError:
             return ""
         try:
-            entries = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US", "en-GB"])
+            api = YouTubeTranscriptApi()
+            fetched = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
         except Exception:
             return ""
-        return " ".join(e.get("text", "") for e in entries if e.get("text"))
+        try:
+            return " ".join(s.text for s in fetched if getattr(s, "text", ""))
+        except Exception:
+            return ""
