@@ -218,9 +218,87 @@ class NewsItem(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class ResearchQuery(Base):
+    """One run of the research agent — the user-facing topic + lifecycle metadata.
+
+    The agent decomposes `topic` into sub-queries, fans them out to source adapters,
+    collects ResearchDocument rows, and writes ResearchFinding rows that summarize
+    distinct strategies/ideas/techniques.
+    """
+
+    __tablename__ = "research_queries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    topic: Mapped[str] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)  # pending|running|done|failed
+    error: Mapped[str] = mapped_column(String(1024), default="")
+    plan: Mapped[dict] = mapped_column(JSON, default=dict)         # planner output
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)        # docs_fetched, tokens, cost, etc.
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchDocument(Base):
+    """A single piece of source content fetched during research.
+
+    `source` ∈ {reddit, youtube, hackernews, arxiv, github, web, x, tiktok, ...}.
+    `external_id` makes re-fetches idempotent across runs (so popular content is shared).
+    `content` is the cleaned/extracted text; raw payloads live in `meta`.
+    """
+
+    __tablename__ = "research_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    query_id: Mapped[int] = mapped_column(Integer, index=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    external_id: Mapped[str] = mapped_column(String(256), index=True)
+    url: Mapped[str] = mapped_column(String(1024), default="")
+    title: Mapped[str] = mapped_column(String(512), default="")
+    author: Mapped[str] = mapped_column(String(128), default="")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    content: Mapped[str] = mapped_column(String, default="")  # SQLite TEXT — unbounded
+    score: Mapped[float] = mapped_column(Float, default=0.0)  # popularity / relevance / upvotes
+    quality: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1 — synthesizer's quality estimate
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_research_doc_source_extid"),
+    )
+
+
+class ResearchFinding(Base):
+    """A structured insight extracted by the synthesizer — one strategy/idea/technique.
+
+    The synthesizer reads N ResearchDocuments and emits M ResearchFindings, each
+    citing the documents it derived from (`citations` is list[ResearchDocument.id]).
+
+    `category` ∈ {strategy, indicator, framework, risk, data_source, infra, anti_pattern, other}
+    """
+
+    __tablename__ = "research_findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    query_id: Mapped[int] = mapped_column(Integer, index=True)
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(256))
+    summary: Mapped[str] = mapped_column(String, default="")     # 1-paragraph
+    detail: Mapped[str] = mapped_column(String, default="")      # full markdown
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
+    novelty: Mapped[float] = mapped_column(Float, default=0.0)     # 0..1 (vs already-seen)
+    actionable: Mapped[int] = mapped_column(Integer, default=0)    # 0/1: implementable in this repo
+    citations: Mapped[list] = mapped_column(JSON, default=list)    # [doc_id, ...]
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 Index("ix_trades_strategy_ts", Trade.strategy_id, Trade.ts)
 Index("ix_equity_strategy_ts", EquitySnapshot.strategy_id, EquitySnapshot.ts)
 Index("ix_orders_strategy_ts", Order.strategy_id, Order.ts)
+Index("ix_research_doc_query", ResearchDocument.query_id, ResearchDocument.fetched_at)
+Index("ix_research_finding_query", ResearchFinding.query_id, ResearchFinding.category)
 
 
 _engine = None

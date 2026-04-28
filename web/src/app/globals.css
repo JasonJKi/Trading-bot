@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0e14;
+  --color-surface: #11161d;
+  --color-surface-2: #161c25;
+  --color-border: #1f2731;
+  --color-border-strong: #2a3441;
+  --color-text: #e6edf3;
+  --color-text-muted: #8b96a3;
+  --color-text-subtle: #5a6573;
+  --color-accent: #4f8eff;
+  --color-positive: #3fb950;
+  --color-negative: #f85149;
+  --color-warn: #d29922;
+  --color-info: #58a6ff;
+  --color-momentum: #4f8eff;
+  --color-mean_reversion: #db6d28;
+  --color-congress: #3fb950;
+  --color-sentiment: #bc8cff;
+  --color-xs_momentum: #f0b32c;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+}
+
+html, body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+}
+
+* { border-color: var(--color-border); }
+
+/* Tabular numbers everywhere — prices align cleanly. */
+.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+/* Pill, used for status indicators. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+
+/* Recharts tooltip dark theme. */
+.recharts-tooltip-wrapper { outline: none; }
+.recharts-default-tooltip {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border-strong) !important;
+  border-radius: 8px !important;
+}

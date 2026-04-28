@@ -16,12 +16,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/trading.db}
       LOG_FORMAT: ${LOG_FORMAT:-pretty}
     ports:
-      - "8080:8080"      # Streamlit dashboard
+      - "8000:8000"      # FastAPI dashboard backend
     volumes:
       - ./data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/_stcore/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5

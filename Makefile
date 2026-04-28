@@ -29,24 +29,28 @@ test-cov:  ## Run tests with coverage.
 
 .PHONY: lint
 lint:  ## Lint with ruff.
-	$(PY) -m ruff check src tests dashboard
+	$(PY) -m ruff check src tests
 
 .PHONY: fmt
 fmt:  ## Auto-format with ruff.
-	$(PY) -m ruff format src tests dashboard
-	$(PY) -m ruff check --fix src tests dashboard
+	$(PY) -m ruff format src tests
+	$(PY) -m ruff check --fix src tests
 
 .PHONY: run-once
 run-once:  ## Run all enabled bots once and exit.
 	$(PY) -m src.core.orchestrator --once
 
 .PHONY: run
-run:  ## Run the orchestrator (long-running scheduler).
-	$(PY) -m src.core.orchestrator
+run:  ## Run worker + API + Next.js dashboard (full stack).
+	./scripts/run.sh
 
-.PHONY: dashboard
-dashboard:  ## Run the Streamlit dashboard locally.
-	$(PY) -m streamlit run dashboard/app.py
+.PHONY: api
+api:  ## Run only the FastAPI dashboard backend (port from .env API_PORT, default 8000).
+	$(PY) -m uvicorn src.api.main:app --reload --port $${API_PORT:-8000}
+
+.PHONY: web
+web:  ## Run only the Next.js dashboard dev server (port from .env WEB_PORT, default 3000).
+	cd web && npm run dev -- --port $${WEB_PORT:-3000}
 
 .PHONY: backtest
 backtest:  ## Backtest a strategy. Usage: make backtest STRAT=momentum START=2024-01-01 END=2025-12-31

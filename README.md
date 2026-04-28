@@ -15,54 +15,39 @@ To wire up a new data source see [`docs/data-sources.md`](./docs/data-sources.md
 ```
 src/
   config.py                 # env-driven settings + live-trading guard
-  core/
-    strategy.py             # Strategy ABC (id, version, schedule, target_positions)
-    broker.py               # Alpaca adapter; idempotent client_order_id; risk caps
-    orchestrator.py         # runs all enabled bots, persists Orders, schedules reconciler
-    reconciler.py           # polls non-terminal Orders, applies fills to BotPosition ledger
-    store.py                # Trade / Order / Signal / BotPosition / BotStatus / AuditEvent
-    metrics.py              # Sharpe, Sortino, drawdown, expectancy, correlation
-    risk.py                 # per-bot circuit breaker + graduation gate
-    alerter.py              # Slack / Discord / email / console alerting
-    logging_setup.py        # rich (TTY) or JSON (prod) structured logs
-  bots/
-    momentum.py             # time-series momentum: EMA cross + MACD + ADX
-    cross_momentum.py       # cross-sectional momentum: rank universe + vol-target sizing + regime
-    mean_reversion.py       # RSI(2) + Bollinger Band
-    congress.py             # placeholder (needs Quiver API key)
-    sentiment.py            # placeholder (needs FinBERT install)
-  data/
-    bars.py                 # yfinance OHLCV fetcher
-    features.py             # vol, z-score, beta, dispersion, breadth, correlation, …
-  core/
-    regime.py               # bull/bear/chop/crisis classifier (VIX + breadth + trend)
-    allocator.py            # softmax(rolling Sharpe) dynamic per-bot capital
-    sizing.py               # vol-targeted position sizing (risk-parity style)
-    healthz.py              # /healthz endpoint on :8081 for uptime monitors
-    backup.py               # online SQLite snapshot, gzipped, retention-aware
-  backtest/
-    runner.py               # walk-forward backtest using the same Strategy classes
-    optimize.py             # Optuna walk-forward parameter search with overfit-gap report
-  cli.py                    # run | backtest | dashboard | graduate | pause | enable | status
-dashboard/
-  app.py                    # Streamlit UI (read-only): live equity, positions, bot cards
-scripts/run.sh              # local + container entrypoint (worker + dashboard)
+  core/                     # orchestrator, strategy ABC, broker, store, metrics, risk, regime, …
+  bots/                     # momentum, cross_momentum, mean_reversion, congress, sentiment
+  data/                     # bars (yfinance), features, congress, news adapters
+  api/                      # FastAPI dashboard backend — read-only over the SQLite store
+  backtest/                 # walk-forward runner + Optuna optimizer
+  cli.py                    # run | backtest | graduate | pause | enable | status
+web/                        # Next.js 15 + Tailwind dashboard (consumes src/api)
+scripts/run.sh              # one-shot: orchestrator + FastAPI + Next.js dev server
 tests/                      # pytest suite (no network required)
-Dockerfile                  # multi-stage build, non-root user
+Dockerfile                  # worker + API image (Next.js ships separately)
 docker-compose.yml          # local stack (sqlite default, --profile postgres for pg)
 Makefile                    # `make help` for everything
-fly.toml                    # production deploy config
+fly.toml                    # production deploy config (worker + API only)
 ```
 
 ## Quickstart (local — recommended for first run)
 
+You'll need **Python ≥ 3.11** and **Node ≥ 20**.
+
 ```bash
-make install      # editable install with all extras
-cp .env.example .env  # fill ALPACA_API_KEY / ALPACA_API_SECRET
-make test         # 34 tests, no network
-make run-once     # one cycle of every enabled bot
-make dashboard    # http://localhost:8501
-make run          # long-running scheduler
+python3.12 -m venv .venv && source .venv/bin/activate
+make install            # editable install (Python deps)
+cd web && npm install   # JS deps for the dashboard
+cd ..
+
+cp .env.example .env    # fill ALPACA_API_KEY / ALPACA_API_SECRET
+make test               # pytest suite, no network
+make run-once           # one cycle of every enabled bot
+
+make run                # full stack: worker + api + dashboard
+# → orchestrator runs in the background
+# → http://localhost:8000  FastAPI (OpenAPI docs at /docs)
+# → http://localhost:3000  Next.js dashboard
 ```
 
 Or via docker-compose (one command):
@@ -114,46 +99,27 @@ Live trading is gated by **three** layers:
 | Idempotent order submission | client_order_id | `BrokerAdapter.make_client_order_id` |
 | In-flight order guard | open `Order` row blocks resubmit | `Orchestrator._submit_intent` |
 
-## Deploying to Fly.io
+## Deploying
 
-The bot deploys as a single Fly app running two processes in one machine:
+Two pieces deploy separately:
 
-- `python -m src.core.orchestrator` — the bot worker (no port).
-- `streamlit run dashboard/app.py` — the dashboard, served on port 8080.
+- **Worker + API** (`src/`) — long-running, holds SQLite, runs APScheduler. Needs Fly /
+  Railway / Hetzner / any always-on host. The Dockerfile here is for this piece.
+- **Dashboard** (`web/`) — stateless Next.js. Vercel, Netlify, or another Fly app.
+  Set `NEXT_PUBLIC_API_URL` in the dashboard's env to point at the worker's URL.
 
-Both share the same SQLite file on a Fly volume. See `fly.toml` and
-`scripts/run.sh`.
+For the worker on Fly:
 
 ```bash
-# 0. From a laptop with flyctl installed
-fly launch --copy-config --no-deploy
-# (decline any prompt to add Postgres or another HTTP service)
-
-# 1. Create the volume (1 GB, same region as the app)
+fly launch --copy-config --no-deploy   # decline Postgres prompt
 fly volumes create data --size 1 --region iad
-
-# 2. Set Alpaca paper-trading secrets
 fly secrets set ALPACA_API_KEY=PK... ALPACA_API_SECRET=...
-
-# 3. Set a dashboard password — without this the dashboard logs a warning
-#    and is open to anyone with the URL.
 fly secrets set DASHBOARD_PASSWORD=$(openssl rand -hex 16)
-# Show it once so you can save it in your password manager:
-fly secrets list
-
-# 4. Deploy
 fly deploy
 ```
 
-The dashboard will be at `https://<your-app>.fly.dev/`. The password gate uses
-constant-time comparison against the `DASHBOARD_PASSWORD` secret; for stronger
-auth, put Cloudflare Access in front of the same URL.
-
-**The bot does not fit Vercel** — serverless functions can't run APScheduler,
-WebSockets, or hold a SQLite file. If Fly doesn't suit you:
-
-- **Hetzner Cloud CX22** — ~$4.50/mo, 2 vCPU / 4 GB, best price/perf.
-- **Railway** — Vercel-style DX with long-running support, ~$5/mo.
+**The worker doesn't fit Vercel** — serverless functions can't run APScheduler
+or hold a SQLite file. The dashboard fits Vercel perfectly.
 
 ## Backtesting
 

@@ -16,10 +16,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from sqlalchemy import text
 
+from src.config import get_settings
 from src.core.store import init_db, session_scope
 
 log = logging.getLogger(__name__)
-HEALTHZ_PORT = 8081
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -45,8 +45,10 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
-def start_in_background(port: int = HEALTHZ_PORT) -> None:
+def start_in_background(port: int | None = None) -> None:
     """Run the health server in a daemon thread. Safe to call multiple times."""
+    if port is None:
+        port = get_settings().healthz_port
     init_db()  # ensure the engine is built so the first probe doesn't race.
     server = ThreadingHTTPServer(("0.0.0.0", port), _Handler)
     thread = threading.Thread(target=server.serve_forever, name="healthz", daemon=True)

@@ -190,6 +190,108 @@ def enable(strategy: str) -> None:  # pragma: no cover
     click.echo(f"enabled {strategy}")
 
 
+@main.group()
+def research() -> None:  # pragma: no cover
+    """Run / inspect the AI-trading-research agent."""
+
+
+@research.command("run")
+@click.argument("topic", nargs=-1, required=True)
+def research_run(topic: tuple[str, ...]) -> None:  # pragma: no cover
+    """Run the research agent on TOPIC. Example:
+
+        trading-bot research run "intraday momentum on crypto with deep learning"
+    """
+    import asyncio
+    from rich.console import Console
+    from src.research.pipeline import run_research
+
+    topic_str = " ".join(topic).strip()
+    if not topic_str:
+        click.echo("topic is required", err=True)
+        raise SystemExit(2)
+    console = Console()
+    console.print(f"[bold]research:[/bold] {topic_str}")
+    qid = asyncio.run(run_research(topic_str))
+    console.print(f"[green]done[/green] — query_id={qid}. View with: trading-bot research show {qid}")
+
+
+@research.command("show")
+@click.argument("query_id", type=int)
+def research_show(query_id: int) -> None:  # pragma: no cover
+    """Pretty-print the findings of a completed research run."""
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    from sqlalchemy import select
+    from src.core.store import ResearchFinding, ResearchQuery, init_db, session_scope
+
+    init_db()
+    console = Console()
+    with session_scope() as sess:
+        q = sess.get(ResearchQuery, query_id)
+        if not q:
+            click.echo(f"no such query: {query_id}", err=True)
+            raise SystemExit(1)
+        findings = list(
+            sess.execute(
+                select(ResearchFinding)
+                .where(ResearchFinding.query_id == query_id)
+                .order_by(ResearchFinding.confidence.desc())
+            ).scalars()
+        )
+        sess.expunge_all()
+
+    summary = (q.stats or {}).get("summary", "")
+    console.print(Panel.fit(
+        f"[bold]{q.topic}[/bold]\nstatus={q.status}  docs={(q.stats or {}).get('docs_collected', 0)}  "
+        f"findings={len(findings)}",
+        title="research run",
+    ))
+    if summary:
+        console.print(Panel(Markdown(summary), title="executive summary"))
+    for f in findings:
+        title = f"[{f.category}] {f.title}  (conf={f.confidence:.2f}, actionable={'yes' if f.actionable else 'no'})"
+        body = f"{f.summary}\n\n{f.detail}"
+        if f.citations:
+            body += f"\n\n*citations: {f.citations}*"
+        console.print(Panel(Markdown(body), title=title))
+
+
+@research.command("list")
+@click.option("--limit", default=20, type=int)
+def research_list(limit: int) -> None:  # pragma: no cover
+    """List recent research runs."""
+    from sqlalchemy import select
+    from src.core.store import ResearchQuery, init_db, session_scope
+
+    init_db()
+    with session_scope() as sess:
+        rows = list(
+            sess.execute(
+                select(ResearchQuery).order_by(ResearchQuery.id.desc()).limit(limit)
+            ).scalars()
+        )
+        sess.expunge_all()
+    if not rows:
+        click.echo("(no research runs yet)")
+        return
+    for r in rows:
+        n = (r.stats or {}).get("findings", 0)
+        click.echo(f"#{r.id:4d}  {r.status:8s}  findings={n:3d}  {r.created_at.isoformat(timespec='seconds')}  {r.topic[:80]}")
+
+
+@research.command("sources")
+def research_sources() -> None:  # pragma: no cover
+    """Show which source adapters are configured & available."""
+    from src.research.sources.base import all_registered, available_sources
+
+    avail = available_sources()
+    for sid, cls in sorted(all_registered().items()):
+        status = "[green]ON[/green]" if sid in avail else "off (no creds)"
+        click.echo(f"  {sid:12s}  {cls.name:30s}  {status}")
+
+
 @main.command()
 def status() -> None:  # pragma: no cover
     """Show the operational state of every known bot."""

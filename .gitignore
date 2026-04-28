@@ -13,6 +13,8 @@ venv/
 *.sqlite3
 data/*.db
 data/*.sqlite*
+data/backup/
+data/*.gz
 .streamlit/secrets.toml
 .pytest_cache/
 .ruff_cache/

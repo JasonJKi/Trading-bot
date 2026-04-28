@@ -1,5 +1,7 @@
-# Multi-stage build: builder produces the wheel, runtime is a slim image.
-# The same image runs locally (docker compose) and in production (Fly).
+# Worker + FastAPI image. The Next.js dashboard ships separately
+# (Vercel, Netlify, Fly's static sites, etc) — see web/ for that.
+#
+# Multi-stage build: builder produces the venv, runtime is slim.
 
 ARG PYTHON_VERSION=3.11
 
@@ -18,12 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml ./
 COPY src ./src
-COPY dashboard ./dashboard
 
-# Install into a venv we can copy into the runtime image.
+# Base deps include FastAPI + uvicorn now, so no extras needed.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install ".[dashboard]"
+    && /opt/venv/bin/pip install .
 
 
 # ---------- runtime ----------
@@ -33,7 +34,6 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# curl is used by the docker-compose healthcheck.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
         && rm -rf /var/lib/apt/lists/* \
         && useradd --create-home --shell /bin/bash app
@@ -42,15 +42,15 @@ WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app src ./src
-COPY --chown=app:app dashboard ./dashboard
-COPY --chown=app:app scripts ./scripts
 
-RUN mkdir -p /app/data && chown -R app:app /app && chmod +x /app/scripts/run.sh
+RUN mkdir -p /app/data && chown -R app:app /app
 VOLUME ["/app/data"]
 
 USER app
 ENV DATABASE_URL=sqlite:////app/data/trading.db
 
-EXPOSE 8080
+EXPOSE 8000
 
-CMD ["/app/scripts/run.sh"]
+# Run orchestrator + FastAPI in one container. The orchestrator runs in the
+# background; uvicorn is the foreground process.
+CMD ["sh", "-c", "python -m src.core.orchestrator & exec uvicorn src.api.main:app --host 0.0.0.0 --port 8000"]

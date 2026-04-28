@@ -34,6 +34,27 @@ class Settings(BaseSettings):
     quiver_api_key: str = ""
     newsapi_key: str = ""
 
+    # --- research agent (optional) ---
+    # LLM
+    gemini_api_key: str = ""
+    research_model: str = "gemini-2.5-pro"           # planner + synthesizer
+    research_fast_model: str = "gemini-2.5-flash"    # researcher tool-calls
+    research_embed_model: str = "text-embedding-004"
+    # Web search
+    tavily_api_key: str = ""
+    # Reddit (https://www.reddit.com/prefs/apps — "script" type)
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
+    reddit_user_agent: str = "trading-bot-research/0.1"
+    # GitHub PAT (optional — raises rate limits, public-only scopes are fine)
+    github_token: str = ""
+    # Apify (optional — for X / TikTok / Instagram scraping in v2)
+    apify_token: str = ""
+    # YouTube Data API key (optional — for keyword search; transcripts work without it)
+    youtube_api_key: str = ""
+    # Logfire (optional — observability)
+    logfire_token: str = ""
+
     # --- bot enablement / universes ---
     enabled_bots: str = "momentum,mean_reversion"
     momentum_universe: str = "SPY,QQQ,AAPL,MSFT,NVDA,AMZN,META,GOOGL,TSLA"
@@ -53,6 +74,11 @@ class Settings(BaseSettings):
     # --- logging ---
     log_level: str = "INFO"
     log_format: str = "auto"  # auto | pretty | json
+
+    # --- ports (override in .env if any conflict locally) ---
+    healthz_port: int = 8081
+    api_port: int = 8000
+    web_port: int = 3000
 
     @field_validator("alpaca_paper", mode="before")
     @classmethod

@@ -1,8 +1,9 @@
 # Fly.io config for trading-bot.
 # One app, two processes running in the same machine sharing the SQLite volume:
 #   - orchestrator (background worker, no port)
-#   - Streamlit dashboard (HTTP on 8080)
-# Auth on the dashboard is via a DASHBOARD_PASSWORD secret (see README).
+#   - FastAPI dashboard backend (HTTP on 8000)
+# The Next.js frontend (web/) ships separately — Vercel or another Fly app.
+# Auth on the API is via a DASHBOARD_PASSWORD secret (see README).
 
 app = 'trading-bot-cpg3lw'
 primary_region = 'nrt'
@@ -23,7 +24,7 @@ primary_region = 'nrt'
 
 # Worker must stay alive for cron schedules — do NOT auto-stop on idle.
 [http_service]
-  internal_port = 8080
+  internal_port = 8000
   force_https = true
   auto_stop_machines = false
   auto_start_machines = true
@@ -32,5 +33,4 @@ primary_region = 'nrt'
 [[vm]]
   cpu_kind = 'shared'
   cpus = 1
-  # Bumped 256 -> 512 MB to accommodate Streamlit + Plotly alongside the worker.
   memory_mb = 512
