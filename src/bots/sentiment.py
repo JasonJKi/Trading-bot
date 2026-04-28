@@ -33,6 +33,7 @@ def _universe() -> list[str]:
 class SentimentStrategy(Strategy):
     id = "sentiment"
     name = "News Sentiment (FinBERT)"
+    description = "Long names with positive rolling news sentiment, intraday."
     version = "1.0"
     schedule = {"hour": "13-21", "minute": "*/15"}  # US session, every 15 min
 

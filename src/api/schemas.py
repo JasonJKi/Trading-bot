@@ -146,3 +146,49 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     ok: bool
+
+
+# === Public bot tear sheets (Phase 24) ===
+# Trimmed, redacted views safe to expose without auth. Aligns with the
+# public/private boundary documented in docs/roadmap.md Phase 24:
+# show track records, hide playbooks.
+
+class PublicBotInfo(BaseModel):
+    """Index-page entry. Aggregate stats; no parameters, positions, or signals."""
+    id: str
+    name: str
+    description: str
+    version: str
+    state: str  # enabled / paused / disabled
+    total_return: float
+    sharpe: float
+    max_drawdown: float
+    win_rate: float
+    n_trades: int  # public count (after PUBLIC_TRADE_DELAY_DAYS filter)
+
+
+class PublicBotDetail(PublicBotInfo):
+    """Detail view — adds CAGR, Sortino, expectancy. Same redactions."""
+    cagr: float
+    sortino: float
+    expectancy: float
+    paper_validated_at: datetime | None
+    inception: datetime | None  # ts of the earliest equity snapshot
+
+
+class PublicEquityPoint(BaseModel):
+    """Single equity-curve sample. No cash/position-value split — those leak
+    intra-day mechanics; only the headline number is public."""
+    ts: datetime
+    total_equity: float
+
+
+class PublicTradeRow(BaseModel):
+    """Trade row, redacted to public-safe fields. Strategy/order metadata
+    omitted; only surfaces after the PUBLIC_TRADE_DELAY_DAYS window."""
+    ts: datetime
+    symbol: str
+    side: str
+    qty: float
+    price: float
+    notional: float

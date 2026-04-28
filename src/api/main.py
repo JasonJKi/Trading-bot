@@ -26,8 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import public_router, router
+from src.api.public_bot_routes import public_bot_router
 from src.api.research_routes import router as research_router
+from src.api.routes import public_router, router
 from src.config import get_settings
 from src.core.logging_setup import setup_logging
 from src.core.store import init_db
@@ -70,6 +71,7 @@ app.add_middleware(
 app.include_router(public_router)
 app.include_router(router)
 app.include_router(research_router)
+app.include_router(public_bot_router)
 
 
 # --- static dashboard --------------------------------------------------------

@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 class CrossSectionalMomentum(Strategy):
     id = "xs_momentum"
     name = "Cross-Sectional Momentum"
+    description = "Long top-decile / short bottom-decile ranks on a US universe."
     version = "1.0"
     schedule = {"day_of_week": "mon-fri", "hour": "20", "minute": "15"}
 

@@ -31,6 +31,7 @@ def _bbands(close: pd.Series, window: int = 20, k: float = 2.0):
 class MeanReversionStrategy(Strategy):
     id = "mean_reversion"
     name = "Mean Reversion"
+    description = "Short-window reversal on US ETFs — daily, oversold/overbought."
     version = "1.0"
     schedule = {"day_of_week": "mon-fri", "hour": "20", "minute": "10"}
 

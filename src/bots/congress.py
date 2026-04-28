@@ -42,6 +42,7 @@ def _allowlist() -> list[str]:
 class CongressStrategy(Strategy):
     id = "congress"
     name = "Congress Copycat"
+    description = "Copies recent buys from allowlisted U.S. lawmakers."
     version = "1.0"
     schedule = {"hour": "*/2", "minute": "10"}  # poll every 2 hours
 

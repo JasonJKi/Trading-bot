@@ -40,6 +40,10 @@ class Strategy(ABC):
     id: str = "abstract"
     #: Human-readable name shown in the dashboard.
     name: str = "Abstract Strategy"
+    #: One-line public description. Surfaced on the public bot tear sheets
+    #: (Phase 24) — keep it strategy-mechanic-light: "trend-following on US
+    #: large caps", not "EMA(20)/EMA(50) cross with ADX(14) chop filter".
+    description: str = ""
     #: Bumped whenever signal-generating logic changes. Stamped on every signal,
     #: trade, and order so historical rows stay reproducible.
     version: str = "1"

@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     api_port: int = 8000
     web_port: int = 3000
 
+    # --- public bot tear sheets (Phase 24) ---
+    # Trades younger than this are hidden from /api/public/bots/{id}/trades so a
+    # copyable real-time feed of fills can't be reverse-engineered. Equity curve
+    # and aggregate stats are NOT delayed — only the per-trade rows.
+    public_trade_delay_days: int = 1
+
     @field_validator("alpaca_paper", mode="before")
     @classmethod
     def _coerce_paper(cls, v):

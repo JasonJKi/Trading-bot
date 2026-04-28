@@ -115,12 +115,14 @@ The trade-delay is the load-bearing knob — a copyable real-time feed would
 defeat the purpose; a T+1 historical record is transparent without leaking
 edge.
 
-- [ ] DNS + Cloudflare Tunnel ingress for `app.67quant.com` (alongside `bot.`)
-- [ ] `src/api/public_routes.py` mounted at `/api/public/*`:
+- [x] DNS + Cloudflare Tunnel ingress for `app.67quant.com` (alongside `bot.`)
+      — apex (`67quant.com`) added too, with `/` → `/welcome` redirect
+- [x] `src/api/public_bot_routes.py` mounted at `/api/public/*`:
       `GET /api/public/bots`, `/api/public/bots/{id}`,
       `/api/public/bots/{id}/equity`, `/api/public/bots/{id}/trades`
-- [ ] `PUBLIC_TRADE_DELAY_DAYS` env knob (default `1`); applied as a SQL filter
+- [x] `PUBLIC_TRADE_DELAY_DAYS` env knob (default `1`); applied as a SQL filter
       on every public trade query
+- [x] `Strategy.description` field for public 1-liner; populated on each bot
 - [ ] Next.js public route tree at `/public/bots/[id]` with hostname-aware
       layout (no auth chrome when `Host: bot.67quant.com`)
 - [ ] Cut `bot.67quant.com` over to serve only public pages once UI is ready
