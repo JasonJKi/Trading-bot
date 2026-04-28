@@ -1,0 +1,47 @@
+# Cloudflare Tunnel config — template.
+#
+# This is the ground truth for what should live at ~/.cloudflared/config.yml
+# on BOTH the laptop (for `cloudflared tunnel route dns ...` and any local
+# debugging) and the server (where the tunnel agent actually runs).
+#
+# The file is not auto-deployed because it contains a per-tunnel UUID that's
+# specific to your Cloudflare account. To render and ship it:
+#
+#   1. Create the tunnel on your laptop (one-time):
+#        cloudflared tunnel login
+#        cloudflared tunnel create trading-bot
+#      That writes ~/.cloudflared/<UUID>.json + cert.pem.
+#
+#   2. Copy this template to ~/.cloudflared/config.yml and substitute __UUID__
+#      with the value from step 1's output.
+#
+#   3. Route each hostname to the tunnel:
+#        cloudflared tunnel route dns trading-bot app.67quant.com
+#        cloudflared tunnel route dns trading-bot bot.67quant.com
+#
+#   4. Push everything to the server:
+#        make mac-tunnel-creds-push
+#
+# Updating the ingress (e.g. adding a new hostname) is just: edit this file,
+# update ~/.cloudflared/config.yml accordingly, scp to server, kickstart the
+# tunnel agent (or `make mac-restart`).
+
+tunnel: __TUNNEL_UUID__
+credentials-file: /Users/jason/.cloudflared/__TUNNEL_UUID__.json
+
+# Hostname → local service. Order matters: first match wins. Last rule is
+# the catch-all 404 so stray hostnames pointed at this tunnel don't leak
+# the dashboard.
+#
+# Phase 24 URL plan:
+#   app.67quant.com  full operator dashboard (auth-gated)
+#   bot.67quant.com  public per-bot tear sheets (read-only)  ← currently
+#                    serves the same app; flips to public-only when the
+#                    /public/bots/* UI ships
+#   67quant.com      marketing landing (future, may be a separate static site)
+ingress:
+  - hostname: app.67quant.com
+    service: http://localhost:8003
+  - hostname: bot.67quant.com
+    service: http://localhost:8003
+  - service: http_status:404
