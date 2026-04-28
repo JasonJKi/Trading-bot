@@ -1,0 +1,35 @@
+# Server runtime deps. Mirrors pyproject.toml [project].dependencies + [research]
+# extras. Kept as a flat list so the server install is a "simple declared-
+# dependency install" — no project build hooks needed.
+#
+# When you change deps in pyproject.toml, update this file too. (A future
+# `make mac-requirements-sync` could regenerate it via pip-compile.)
+
+# --- core runtime ---
+alpaca-py>=0.30.0
+apscheduler>=3.10.4
+pydantic>=2.6
+pydantic-settings>=2.2
+python-dotenv>=1.0
+sqlalchemy>=2.0
+pandas>=2.1
+numpy>=1.26
+yfinance>=0.2.40
+requests>=2.31
+httpx>=0.27
+click>=8.1
+rich>=13.7
+fastapi>=0.115
+uvicorn[standard]>=0.30
+
+# --- research extras (PydanticAI + source clients) ---
+pydantic-ai-slim[google]>=0.0.36
+google-genai>=0.3
+asyncpraw>=7.7
+youtube-transcript-api>=0.6.2
+yt-dlp>=2024.4.9
+feedparser>=6.0
+tavily-python>=0.5
+selectolax>=0.3.21
+tenacity>=8.2
+logfire>=0.30

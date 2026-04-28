@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Install/refresh the launchd LaunchAgents on the SERVER. Run remotely via:
+#
+#   make mac-services-install
+#
+# What it does:
+#   1. Reads APP_DIR (default ~/Trading-bot) and API_PORT (from .env, default 8000).
+#   2. Substitutes placeholders in deploy/launchd/*.plist.
+#   3. Installs into ~/Library/LaunchAgents/.
+#   4. Reloads via `launchctl bootout` + `launchctl bootstrap`.
+#
+# Idempotent — safe to run on every deploy (in fact `mac-deploy` calls it).
+# No sudo: LaunchAgents live in $HOME and run as the current user. Requires
+# auto-login on the server so they survive reboots.
+set -euo pipefail
+
+APP_DIR="${APP_DIR:-$HOME/Trading-bot}"
+TARGET_DIR="$HOME/Library/LaunchAgents"
+TEMPLATE_DIR="$APP_DIR/deploy/launchd"
+
+# API_PORT comes from .env. Fall back to 8000.
+API_PORT=8000
+if [[ -f "$APP_DIR/.env" ]]; then
+  port_line=$(grep -E '^API_PORT=' "$APP_DIR/.env" || true)
+  if [[ -n "$port_line" ]]; then
+    API_PORT="${port_line#API_PORT=}"
+  fi
+fi
+
+mkdir -p "$TARGET_DIR" "$APP_DIR/logs"
+
+# launchctl uses gui/$UID for per-user agents.
+DOMAIN="gui/$(id -u)"
+
+for label in com.tradingbot.orchestrator com.tradingbot.api; do
+  src="$TEMPLATE_DIR/$label.plist"
+  dst="$TARGET_DIR/$label.plist"
+  if [[ ! -f "$src" ]]; then
+    echo "missing template: $src" >&2
+    exit 1
+  fi
+  sed -e "s|__APP_DIR__|$APP_DIR|g" \
+      -e "s|__API_PORT__|$API_PORT|g" \
+      "$src" > "$dst"
+
+  # Bootout if already loaded (ignore "not loaded" error). Then bootstrap.
+  launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+  launchctl bootstrap "$DOMAIN" "$dst"
+  echo "loaded: $label"
+done
+
+echo
+echo "agents installed to $TARGET_DIR"
+echo "logs in $APP_DIR/logs/"
