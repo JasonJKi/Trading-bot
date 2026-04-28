@@ -39,24 +39,46 @@ if [[ -f "$HOME/.cloudflared/config.yml" ]]; then
   LABELS+=(com.tradingbot.tunnel)
 fi
 
+failed_labels=()
 for label in "${LABELS[@]}"; do
   src="$TEMPLATE_DIR/$label.plist"
   dst="$TARGET_DIR/$label.plist"
   if [[ ! -f "$src" ]]; then
     echo "missing template: $src" >&2
-    exit 1
+    failed_labels+=("$label (no template)")
+    continue
   fi
   sed -e "s|__APP_DIR__|$APP_DIR|g" \
       -e "s|__API_PORT__|$API_PORT|g" \
       -e "s|__HOME__|$HOME|g" \
       "$src" > "$dst"
 
-  # Bootout if already loaded (ignore "not loaded" error). Then bootstrap.
-  launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
-  launchctl bootstrap "$DOMAIN" "$dst"
-  echo "loaded: $label"
+  # Bootout if already loaded (ignore "not loaded" error), then bootstrap.
+  # The half-second gap matters: launchd's bootout returns before the job is
+  # fully evicted, and a too-fast bootstrap on the same label can fail with
+  # "Input/output error" (launchctl exit 5). The sleep is empirical.
+  if launchctl print "$DOMAIN/$label" >/dev/null 2>&1; then
+    launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+    sleep 0.5
+  fi
+
+  # Don't let one agent's failure stop the rest. set -e is on for everything
+  # else, so we wrap just this call.
+  if launchctl bootstrap "$DOMAIN" "$dst" 2>&1; then
+    echo "loaded: $label"
+  else
+    echo "FAILED: $label (will not retry — check 'launchctl print $DOMAIN/$label')" >&2
+    failed_labels+=("$label")
+  fi
 done
 
 echo
 echo "agents installed to $TARGET_DIR"
 echo "logs in $APP_DIR/logs/"
+
+if [[ ${#failed_labels[@]} -gt 0 ]]; then
+  echo
+  echo "WARNING: ${#failed_labels[@]} agent(s) failed:" >&2
+  printf '  %s\n' "${failed_labels[@]}" >&2
+  exit 1
+fi
