@@ -7,7 +7,7 @@ set -euo pipefail
 TARGET_DIR="$HOME/Library/LaunchAgents"
 DOMAIN="gui/$(id -u)"
 
-for label in com.tradingbot.orchestrator com.tradingbot.api; do
+for label in com.tradingbot.orchestrator com.tradingbot.api com.tradingbot.tunnel; do
   launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
   rm -f "$TARGET_DIR/$label.plist"
   echo "removed: $label"

@@ -203,8 +203,20 @@ mac-status:  ## Show agent state on $(MAC_HOST).
 mac-logs:  ## Tail orchestrator + api logs on $(MAC_HOST).
 	ssh $(MAC_HOST) 'tail -F $(MAC_APP_DIR)/logs/orchestrator.out.log $(MAC_APP_DIR)/logs/orchestrator.err.log $(MAC_APP_DIR)/logs/api.out.log $(MAC_APP_DIR)/logs/api.err.log'
 
-.PHONY: mac-tunnel
-mac-tunnel:  ## Open a Cloudflare Quick Tunnel on $(MAC_HOST). Ctrl-C stops it.
+.PHONY: mac-tunnel-creds-push
+mac-tunnel-creds-push:  ## One-time: scp ~/.cloudflared (cert.pem + tunnel json + config.yml) to $(MAC_HOST).
+	@test -f $$HOME/.cloudflared/cert.pem || (echo "no ~/.cloudflared/cert.pem on laptop — run 'cloudflared tunnel login' first" >&2; exit 1)
+	@test -f $$HOME/.cloudflared/config.yml || (echo "no ~/.cloudflared/config.yml on laptop — see deploy/README.md" >&2; exit 1)
+	ssh $(MAC_HOST) 'mkdir -p ~/.cloudflared && chmod 700 ~/.cloudflared'
+	scp $$HOME/.cloudflared/cert.pem $$HOME/.cloudflared/config.yml $(MAC_HOST):~/.cloudflared/
+	@for f in $$HOME/.cloudflared/*.json; do \
+		[ -e "$$f" ] && scp "$$f" $(MAC_HOST):~/.cloudflared/ ; \
+	done
+	ssh $(MAC_HOST) 'chmod 600 ~/.cloudflared/*'
+	@echo ">> credentials pushed. tunnel agent will be installed on next 'make mac-deploy'."
+
+.PHONY: mac-tunnel-quick
+mac-tunnel-quick:  ## Ad-hoc Cloudflare Quick Tunnel on $(MAC_HOST). Ctrl-C stops it.
 	@port=$$(ssh $(MAC_HOST) "grep -E '^API_PORT=' $(MAC_APP_DIR)/.env 2>/dev/null | cut -d= -f2"); \
 	port=$${port:-8000}; \
 	echo ">> opening Quick Tunnel to http://localhost:$$port on $(MAC_HOST)"; \

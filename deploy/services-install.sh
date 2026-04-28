@@ -32,7 +32,14 @@ mkdir -p "$TARGET_DIR" "$APP_DIR/logs"
 # launchctl uses gui/$UID for per-user agents.
 DOMAIN="gui/$(id -u)"
 
-for label in com.tradingbot.orchestrator com.tradingbot.api; do
+# Always install orchestrator + api. Install the tunnel agent only if cloudflared
+# credentials are present (~/.cloudflared/config.yml shipped via mac-tunnel-creds-push).
+LABELS=(com.tradingbot.orchestrator com.tradingbot.api)
+if [[ -f "$HOME/.cloudflared/config.yml" ]]; then
+  LABELS+=(com.tradingbot.tunnel)
+fi
+
+for label in "${LABELS[@]}"; do
   src="$TEMPLATE_DIR/$label.plist"
   dst="$TARGET_DIR/$label.plist"
   if [[ ! -f "$src" ]]; then
@@ -41,6 +48,7 @@ for label in com.tradingbot.orchestrator com.tradingbot.api; do
   fi
   sed -e "s|__APP_DIR__|$APP_DIR|g" \
       -e "s|__API_PORT__|$API_PORT|g" \
+      -e "s|__HOME__|$HOME|g" \
       "$src" > "$dst"
 
   # Bootout if already loaded (ignore "not loaded" error). Then bootstrap.
